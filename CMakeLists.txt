@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.17)
 
 project(acetree VERSION 0.0.1.1 LANGUAGES CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Enable Qt auto generator
@@ -21,8 +21,8 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # Add library
-find_package(QT NAMES Qt6 Qt5 COMPONENTS Core Widgets REQUIRED)
-find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Core Widgets REQUIRED)
+find_package(QT NAMES Qt6 Qt5 COMPONENTS Core REQUIRED)
+find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Core REQUIRED)
 
 if(ACETREE_BUILD_STATIC)
     add_library(${PROJECT_NAME} STATIC)
@@ -40,7 +40,7 @@ file(GLOB_RECURSE _sources src/*.h src/*.cpp)
 target_sources(${PROJECT_NAME} PRIVATE ${_headers} ${_sources})
 
 # Handle libraries and include directories
-target_link_libraries(${PROJECT_NAME} PUBLIC Qt${QT_VERSION_MAJOR}::Widgets)
+target_link_libraries(${PROJECT_NAME} PUBLIC Qt${QT_VERSION_MAJOR}::Core)
 
 target_include_directories(${PROJECT_NAME} PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
@@ -48,6 +48,11 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 
 target_include_directories(${PROJECT_NAME} PRIVATE
     src
+    src/entity
+    src/itemmodel
+    src/serialization
+    src/tools
+    src/widgets
     include/private
 )
 

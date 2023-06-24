@@ -23,11 +23,11 @@ set(RC_ICON_PATH)
 set(RC_VERSION ${_version_1},${_version_2},${_version_3},${_version_4})
 set(RC_APPLICATION_NAME ${PROJECT_NAME})
 set(RC_VERSION_STRING ${PROJECT_VERSION})
-set(RC_DESCRIPTION "Qt Log Structured Tree Model")
+set(RC_DESCRIPTION "Qt Journaling Tree Model")
 set(RC_COPYRIGHT "Copyright 2022-2023 SineStriker")
 
 # Generate rc file
-set(_rc_path ${CMAKE_CURRENT_BINARY_DIR}/${_target}.rc)
+set(_rc_path ${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}_res.rc)
 configure_file(${CMAKE_CURRENT_LIST_DIR}/WinResource.rc.in ${_rc_path} @ONLY)
 
 # Add source
