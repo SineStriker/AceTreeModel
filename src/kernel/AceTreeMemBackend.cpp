@@ -4,12 +4,14 @@
 #include "AceTreeItem_p.h"
 
 AceTreeMemBackendPrivate::AceTreeMemBackendPrivate() {
-    maxSteps = 100;
+    maxSteps = 4;
     model = nullptr;
+    min = 0;
     current = 0;
 }
 
 AceTreeMemBackendPrivate::~AceTreeMemBackendPrivate() {
+    removeEvents(0, stack.size());
 }
 
 void AceTreeMemBackendPrivate::init() {
@@ -26,6 +28,10 @@ void AceTreeMemBackendPrivate::removeEvents(int b, int e) {
         }
     }
     stack.erase(begin, end);
+
+    qDebug().nospace() << "[AceTreeBackend] remove events (" << b << ", " << e << ") min=" << min
+                       << ", current=" << current << ", "
+                       << "step=" << (min + current) << ", size=" << stack.size();
 }
 
 void AceTreeMemBackendPrivate::afterModelInfoSet() {
@@ -39,7 +45,7 @@ void AceTreeMemBackendPrivate::afterCommit(const QList<AceTreeEvent *> &events,
     Q_UNUSED(events);
     Q_UNUSED(attributes);
 
-    if (stack.size() >= 2 * maxSteps) {
+    if (current > 2 * maxSteps) {
         // Remove head
         removeEvents(0, maxSteps);
         min += maxSteps;

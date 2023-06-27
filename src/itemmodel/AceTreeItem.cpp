@@ -55,6 +55,8 @@ AceTreeItemPrivate::~AceTreeItemPrivate() {
             qFatal("AceTreeItem::~AceTreeItem(): deleting a managed item may cause crash!!!");
         }
 
+        qDebug() << "Item remove" << m_index;
+
         auto d = model->d_func();
         if (!d->is_destruct)
             model->d_func()->removeIndex(m_index);
@@ -587,6 +589,7 @@ AceTreeItem *AceTreeItemPrivate::clone_helper(bool user) const {
     for (auto &child : d->vector) {
         auto newChild = child->d_func()->clone_helper(user);
         newChild->d_func()->parent = item;
+
         d2->vector.append(newChild);
     }
 
@@ -595,6 +598,7 @@ AceTreeItem *AceTreeItemPrivate::clone_helper(bool user) const {
     for (auto it = d->records.begin(); it != d->records.end(); ++it) {
         auto newChild = it.value()->d_func()->clone_helper(user);
         newChild->d_func()->parent = item;
+
         d2->records.insert(it.key(), newChild);
         d2->recordIndexes.insert(newChild, it.key());
     }
@@ -605,6 +609,7 @@ AceTreeItem *AceTreeItemPrivate::clone_helper(bool user) const {
     for (auto it = d->set.begin(); it != d->set.end(); ++it) {
         auto newChild = it.value()->d_func()->clone_helper(user);
         newChild->d_func()->parent = item;
+
         d2->set.insert(it.key(), newChild);
         d2->setIndexes.insert(newChild, it.key());
     }
@@ -1177,26 +1182,26 @@ namespace AceTreePrivate {
         return readResult;
     }
 
-//    QDataStream &operator>>(QDataStream &in, size_t &i) {
-//        i = 0;
-//        if (readBlock(in, reinterpret_cast<char *>(&i), sizeof(i)) != sizeof(i)) {
-//            i = 0;
-//        } else {
-//            if (in.byteOrder() != static_cast<QDataStream::ByteOrder>(QSysInfo::ByteOrder)) {
-//                i = qbswap(i);
-//            }
-//        }
-//        return in;
-//    }
+    //    QDataStream &operator>>(QDataStream &in, size_t &i) {
+    //        i = 0;
+    //        if (readBlock(in, reinterpret_cast<char *>(&i), sizeof(i)) != sizeof(i)) {
+    //            i = 0;
+    //        } else {
+    //            if (in.byteOrder() != static_cast<QDataStream::ByteOrder>(QSysInfo::ByteOrder)) {
+    //                i = qbswap(i);
+    //            }
+    //        }
+    //        return in;
+    //    }
 
-//    QDataStream &operator<<(QDataStream &out, size_t i) {
-//        if (out.byteOrder() != static_cast<QDataStream::ByteOrder>(QSysInfo::ByteOrder)) {
-//            i = qbswap(i);
-//        }
-//        if (out.device()->write((char *) &i, sizeof(i)) != sizeof(i))
-//            out.setStatus(QDataStream::WriteFailed);
-//        return out;
-//    }
+    //    QDataStream &operator<<(QDataStream &out, size_t i) {
+    //        if (out.byteOrder() != static_cast<QDataStream::ByteOrder>(QSysInfo::ByteOrder)) {
+    //            i = qbswap(i);
+    //        }
+    //        if (out.device()->write((char *) &i, sizeof(i)) != sizeof(i))
+    //            out.setStatus(QDataStream::WriteFailed);
+    //        return out;
+    //    }
 
     QDataStream &operator>>(QDataStream &in, QString &s) {
         QByteArray arr;

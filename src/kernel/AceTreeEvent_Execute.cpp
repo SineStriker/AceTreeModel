@@ -93,7 +93,8 @@ void AceTreeRowsInsDelEvent::clean() {
     }
 
     for (const auto &child : qAsConst(m_children)) {
-        AceTreeItemPrivate::forceDeleteItem(child);
+        if (child->isManaged())
+            AceTreeItemPrivate::forceDeleteItem(child);
     }
 }
 
@@ -118,7 +119,8 @@ void AceTreeRecordEvent::clean() {
         return;
     }
 
-    AceTreeItemPrivate::forceDeleteItem(m_child);
+    if (m_child->isManaged())
+        AceTreeItemPrivate::forceDeleteItem(m_child);
 }
 
 bool AceTreeElementEvent::execute(bool undo) {
@@ -142,7 +144,8 @@ void AceTreeElementEvent::clean() {
         return;
     }
 
-    AceTreeItemPrivate::forceDeleteItem(m_child);
+    if (m_child->isManaged())
+        AceTreeItemPrivate::forceDeleteItem(m_child);
 }
 
 bool AceTreeRootEvent::execute(bool undo) {
@@ -160,5 +163,6 @@ bool AceTreeRootEvent::execute(bool undo) {
 }
 
 void AceTreeRootEvent::clean() {
-    AceTreeItemPrivate::forceDeleteItem(r);
+    if (r->isManaged())
+        AceTreeItemPrivate::forceDeleteItem(r);
 }

@@ -71,7 +71,7 @@ namespace Operations {
             out << child->index();
         }
 
-        out.skipRawData(sizeof(qint64));
+        out << qint64(0);
         auto &dev = *out.device();
         auto pos = dev.pos();
 
@@ -160,7 +160,7 @@ namespace Operations {
     bool RecordAddOp::write(QDataStream &out) const {
         out << parent << seq << child->index();
 
-        out.skipRawData(sizeof(qint64));
+        out << qint64(0);
         auto &dev = *out.device();
         auto pos = dev.pos();
 
@@ -216,7 +216,7 @@ namespace Operations {
         AceTreePrivate::operator<<(out, key);
         out << child->index();
 
-        out.skipRawData(sizeof(qint64));
+        out << qint64(0);
         auto &dev = *out.device();
         auto pos = dev.pos();
 

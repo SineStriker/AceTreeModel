@@ -1,6 +1,8 @@
 #ifndef ACETREEJOURNALBACKEND_P_H
 #define ACETREEJOURNALBACKEND_P_H
 
+#include <QFile>
+
 #include <condition_variable>
 #include <mutex>
 #include <thread>
@@ -32,6 +34,9 @@ public:
     void afterCommit(const QList<AceTreeEvent *> &events,
                      const QHash<QString, QString> &attributes) override;
 
+    void abortBackwardReadTask();
+    void abortForwardReadTask();
+
     void updateStackSize();
 
     // Worker routine
@@ -54,8 +59,12 @@ public:
         ~CheckPointTaskBuffer();
     };
     CheckPointTaskBuffer *backward_buf;
-
     CheckPointTaskBuffer *forward_buf;
+
+    QFile *stepFile;
+    QFile *infoFile;
+    QFile *txFile;
+    int txNum;
 
     int fsMin2;
     int fsMax2;

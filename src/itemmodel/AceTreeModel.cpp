@@ -211,6 +211,11 @@ void AceTreeModel::commitTransaction(const QHash<QString, QString> &attributes) 
         return;
     }
 
+    if (d->tx_stack.isEmpty()) {
+        d->m_state = Idle;
+        return;
+    }
+
     d->backend->commit(d->tx_stack, attributes);
     d->tx_stack.clear();
 
