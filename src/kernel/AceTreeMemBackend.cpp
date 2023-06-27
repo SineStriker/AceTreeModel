@@ -3,8 +3,21 @@
 
 #include "AceTreeItem_p.h"
 
-template <class T>
-static void removeEvents(T &stack, typename T::iterator begin, typename T::iterator end) {
+AceTreeMemBackendPrivate::AceTreeMemBackendPrivate() {
+    maxSteps = 100;
+    model = nullptr;
+    current = 0;
+}
+
+AceTreeMemBackendPrivate::~AceTreeMemBackendPrivate() {
+}
+
+void AceTreeMemBackendPrivate::init() {
+}
+
+void AceTreeMemBackendPrivate::removeEvents(int b, int e) {
+    auto begin = stack.begin() + b;
+    auto end = stack.begin() + e;
     for (auto it = begin; it != end; ++it) {
         AceTreeMemBackendPrivate::TransactionData &tx = *it;
         for (const auto &e : qAsConst(tx.events)) {
@@ -15,40 +28,23 @@ static void removeEvents(T &stack, typename T::iterator begin, typename T::itera
     stack.erase(begin, end);
 }
 
-AceTreeMemBackendPrivate::AceTreeMemBackendPrivate() {
-    maxReserved = 100;
-    model = nullptr;
-    step = 0;
+void AceTreeMemBackendPrivate::afterModelInfoSet() {
 }
 
-AceTreeMemBackendPrivate::~AceTreeMemBackendPrivate() {
-}
-
-void AceTreeMemBackendPrivate::init() {
-}
-
-void AceTreeMemBackendPrivate::modelInfoSet() {
-}
-
-void AceTreeMemBackendPrivate::afterChangeStep(int step) {
-    Q_UNUSED(step)
+void AceTreeMemBackendPrivate::afterCurrentChange() {
 }
 
 void AceTreeMemBackendPrivate::afterCommit(const QList<AceTreeEvent *> &events,
                                            const QHash<QString, QString> &attributes) {
     Q_UNUSED(events);
     Q_UNUSED(attributes);
-}
 
-void AceTreeMemBackendPrivate::removeForwardSteps() {
-    removeEvents(stack, stack.begin() + step, stack.end());
-}
-
-void AceTreeMemBackendPrivate::removeEarlySteps() {
-    // Remove all managed items
-    removeEvents(stack, stack.begin(), stack.begin() + maxReserved);
-    minStep += maxReserved;
-    step -= maxReserved;
+    if (stack.size() >= 2 * maxSteps) {
+        // Remove head
+        removeEvents(0, maxSteps);
+        min += maxSteps;
+        current -= maxSteps;
+    }
 }
 
 AceTreeMemBackend::AceTreeMemBackend(QObject *parent)
@@ -60,7 +56,7 @@ AceTreeMemBackend::~AceTreeMemBackend() {
 
 int AceTreeMemBackend::maxReservedSteps() const {
     Q_D(const AceTreeMemBackend);
-    return d->maxReserved;
+    return d->maxSteps;
 }
 
 void AceTreeMemBackend::setMaxReservedSteps(int steps) {
@@ -68,7 +64,12 @@ void AceTreeMemBackend::setMaxReservedSteps(int steps) {
     if (d->model) {
         return; // Not allowed to change after setup
     }
-    d->maxReserved = steps;
+
+    if (steps < 100) {
+        return; // To small
+    }
+
+    d->maxSteps = steps;
 }
 
 void AceTreeMemBackend::setup(AceTreeModel *model) {
@@ -84,27 +85,27 @@ QVariantHash AceTreeMemBackend::modelInfo() const {
 void AceTreeMemBackend::setModelInfo(const QVariantHash &info) {
     Q_D(AceTreeMemBackend);
     d->modelInfo = info;
-    d->modelInfoSet();
+    d->afterModelInfoSet();
 }
 
 int AceTreeMemBackend::min() const {
     Q_D(const AceTreeMemBackend);
-    return d->minStep;
+    return d->min;
 }
 
 int AceTreeMemBackend::max() const {
     Q_D(const AceTreeMemBackend);
-    return d->minStep + d->stack.size();
+    return d->min + d->stack.size();
 }
 
 int AceTreeMemBackend::current() const {
     Q_D(const AceTreeMemBackend);
-    return d->minStep + d->step;
+    return d->min + d->current;
 }
 
 QHash<QString, QString> AceTreeMemBackend::attributes(int step) const {
     Q_D(const AceTreeMemBackend);
-    step -= d->minStep;
+    step -= d->min;
     if (step < 0 || step >= d->stack.size())
         return {};
     return d->stack.at(step).attrs;
@@ -113,32 +114,32 @@ QHash<QString, QString> AceTreeMemBackend::attributes(int step) const {
 void AceTreeMemBackend::undo() {
     Q_D(AceTreeMemBackend);
 
-    if (d->step == 0)
+    if (d->current == 0)
         return;
 
     // Step backward
-    const auto &tx = d->stack.at(d->step - 1);
+    const auto &tx = d->stack.at(d->current - 1);
     for (auto it = tx.events.rbegin(); it != tx.events.rend(); ++it) {
         AceTreeItemPrivate::executeEvent(*it, true);
     }
-    d->step--;
+    d->current--;
 
-    d->afterChangeStep(d->step);
+    d->afterCurrentChange();
 }
 
 void AceTreeMemBackend::redo() {
     Q_D(AceTreeMemBackend);
-    if (d->step == d->stack.size())
+    if (d->current == d->stack.size())
         return;
 
     // Step forward
-    const auto &tx = d->stack.at(d->step);
+    const auto &tx = d->stack.at(d->current);
     for (auto it = tx.events.begin(); it != tx.events.end(); ++it) {
         AceTreeItemPrivate::executeEvent(*it, false);
     }
-    d->step++;
+    d->current++;
 
-    d->afterChangeStep(d->step);
+    d->afterCurrentChange();
 }
 
 void AceTreeMemBackend::commit(const QList<AceTreeEvent *> &events,
@@ -146,18 +147,13 @@ void AceTreeMemBackend::commit(const QList<AceTreeEvent *> &events,
     Q_D(AceTreeMemBackend);
 
     // Truncate tail
-    if (d->step < d->stack.size()) {
-        d->removeForwardSteps();
+    if (d->current < d->stack.size()) {
+        d->removeEvents(d->current, d->stack.size());
     }
 
     // Commit
     d->stack.append({events, attrs});
-    d->step++;
-
-    // Remove head
-    if (d->stack.size() >= 2 * d->maxReserved) {
-        d->removeEarlySteps();
-    }
+    d->current++;
 
     d->afterCommit(events, attrs);
 }

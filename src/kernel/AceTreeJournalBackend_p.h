@@ -4,6 +4,7 @@
 #include <condition_variable>
 #include <mutex>
 #include <thread>
+#include <unordered_map>
 
 #include "AceTreeJournalBackend.h"
 #include "AceTreeMemBackend_p.h"
@@ -18,12 +19,20 @@ public:
 
     void init();
 
-    void modelInfoSet() override;
-    void afterChangeStep(int step) override;
+    int maxCheckPoints;
+    QString dir;
+
+    int fsMin;
+    int fsMax;
+
+    QHash<QString, QString> fs_getAttribute(int step) const;
+
+    void afterModelInfoSet() override;
+    void afterCurrentChange() override;
     void afterCommit(const QList<AceTreeEvent *> &events,
                      const QHash<QString, QString> &attributes) override;
 
-    QString dir;
+    void updateStackSize();
 
     // Worker routine
     void workerRoutine();
@@ -31,8 +40,26 @@ public:
 
     std::thread *worker;
     std::mutex mtx;
-    std::condition_variable cv;
 
+    struct CheckPointTaskBuffer {
+        bool brief; // Read only id of insert operation
+        QVector<AceTreeItem *> removedItems;
+        QVector<Tasks::OpsAndAttrs> data;
+        std::mutex mtx;
+        std::condition_variable cv;
+        volatile bool obsolete;
+        volatile bool finished;
+        CheckPointTaskBuffer() : brief(false), obsolete(false), finished(false) {
+        }
+        ~CheckPointTaskBuffer();
+    };
+    CheckPointTaskBuffer *backward_buf;
+
+    CheckPointTaskBuffer *forward_buf;
+
+    int fsMin2;
+    int fsMax2;
+    int fsStep2;
     std::list<Tasks::BaseTask *> task_queue;
 };
 

@@ -1,5 +1,7 @@
 #include "Tasks.h"
 
+#include "AceTreeItem_p.h"
+
 namespace Tasks {
 
     BaseTask::~BaseTask() {
@@ -11,10 +13,15 @@ namespace Tasks {
     ChangeStepTask::~ChangeStepTask() {
     }
 
-    WriteCheckPointTask::~WriteCheckPointTask() {
+    UpdateModelInfoTask::~UpdateModelInfoTask() {
     }
 
-    UpdateModelInfoTask::~UpdateModelInfoTask() {
+    WriteCkptTask::~WriteCkptTask() {
+        delete root;
+        qDeleteAll(removedItems);
+    }
+
+    ReadCkptTask::~ReadCkptTask() {
     }
 
 } // namespace Tasks

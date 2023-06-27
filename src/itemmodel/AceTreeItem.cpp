@@ -585,7 +585,7 @@ AceTreeItem *AceTreeItemPrivate::clone_helper(bool user) const {
 
     d2->vector.reserve(d->vector.size());
     for (auto &child : d->vector) {
-        auto newChild = child->clone();
+        auto newChild = child->d_func()->clone_helper(user);
         newChild->d_func()->parent = item;
         d2->vector.append(newChild);
     }
@@ -593,7 +593,7 @@ AceTreeItem *AceTreeItemPrivate::clone_helper(bool user) const {
     d2->records.reserve(d->records.size());
     d2->recordIndexes.reserve(d->recordIndexes.size());
     for (auto it = d->records.begin(); it != d->records.end(); ++it) {
-        auto newChild = it.value()->clone();
+        auto newChild = it.value()->d_func()->clone_helper(user);
         newChild->d_func()->parent = item;
         d2->records.insert(it.key(), newChild);
         d2->recordIndexes.insert(newChild, it.key());
@@ -603,7 +603,7 @@ AceTreeItem *AceTreeItemPrivate::clone_helper(bool user) const {
     d2->set.reserve(d->set.size());
     d2->setIndexes.reserve(d->setIndexes.size());
     for (auto it = d->set.begin(); it != d->set.end(); ++it) {
-        auto newChild = it.value()->clone();
+        auto newChild = it.value()->d_func()->clone_helper(user);
         newChild->d_func()->parent = item;
         d2->set.insert(it.key(), newChild);
         d2->setIndexes.insert(newChild, it.key());

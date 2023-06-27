@@ -1,8 +1,9 @@
 #include "Operations.h"
 
-#include "AceTreeItem_p.h"
-
 #include <QDataStream>
+
+#include "AceTreeItem_p.h"
+#include "AceTreeModel_p.h"
 
 namespace Operations {
 
@@ -42,10 +43,15 @@ namespace Operations {
         return out.status() == QDataStream::Ok;
     }
 
+    RowsInsertOp::~RowsInsertOp() {
+        qDeleteAll(children);
+    }
+
     bool RowsInsertOp::read(QDataStream &in) {
         int size;
         in >> parent >> index >> size;
         children.reserve(size);
+        in.skipRawData(sizeof(size_t) * size + sizeof(qint64));
         for (int i = 0; i < size; ++i) {
             auto item = AceTreeItem::read(in);
             if (!item) {
@@ -62,12 +68,43 @@ namespace Operations {
     bool RowsInsertOp::write(QDataStream &out) const {
         out << parent << index << children.size();
         for (const auto &child : qAsConst(children)) {
+            out << child->index();
+        }
+
+        out.skipRawData(sizeof(qint64));
+        auto &dev = *out.device();
+        auto pos = dev.pos();
+
+        for (const auto &child : qAsConst(children)) {
             child->write(out);
             if (out.status() != QDataStream::Ok) {
                 return false;
             }
         }
+
+        auto pos1 = dev.pos();
+        dev.seek(pos - sizeof(qint64));
+        out << (pos1 - pos);
+        dev.seek(pos1);
+
         return true;
+    }
+
+    bool RowsInsertOp::readBrief(QDataStream &in) {
+        int size;
+        in >> parent >> index >> size;
+        childrenIds.reserve(size);
+        for (int i = 0; i < size; ++i) {
+            size_t id;
+            in >> id;
+            childrenIds.append(id);
+        }
+
+        qint64 delta;
+        in >> delta;
+        in.skipRawData(delta);
+
+        return in.status() == QDataStream::Ok;
     }
 
     bool RowsRemoveOp::read(QDataStream &in) {
@@ -104,8 +141,13 @@ namespace Operations {
         return out.status() == QDataStream::Ok;
     }
 
+    RecordAddOp::~RecordAddOp() {
+        delete child;
+    }
+
     bool RecordAddOp::read(QDataStream &in) {
         in >> parent >> seq;
+        in.skipRawData(sizeof(size_t) + sizeof(qint64));
         auto item = AceTreeItem::read(in);
         if (!item) {
             in.setStatus(QDataStream::ReadCorruptData);
@@ -116,9 +158,30 @@ namespace Operations {
     }
 
     bool RecordAddOp::write(QDataStream &out) const {
-        out << parent << seq;
+        out << parent << seq << child->index();
+
+        out.skipRawData(sizeof(qint64));
+        auto &dev = *out.device();
+        auto pos = dev.pos();
+
         child->write(out);
+
+        auto pos1 = dev.pos();
+        dev.seek(pos - sizeof(qint64));
+        out << (pos1 - pos);
+        dev.seek(pos1);
+
         return out.status() == QDataStream::Ok;
+    }
+
+    bool RecordAddOp::readBrief(QDataStream &in) {
+        in >> parent >> seq >> childId;
+
+        qint64 delta;
+        in >> delta;
+        in.skipRawData(delta);
+
+        return in.status() == QDataStream::Ok;
     }
 
     bool RecordRemoveOp::read(QDataStream &in) {
@@ -131,13 +194,14 @@ namespace Operations {
         return out.status() == QDataStream::Ok;
     }
 
+    ElementAddOp::~ElementAddOp() {
+        delete child;
+    }
+
     bool ElementAddOp::read(QDataStream &in) {
         in >> parent;
         AceTreePrivate::operator>>(in, key);
-        if (in.status() != QDataStream::Ok) {
-            return false;
-        }
-
+        in.skipRawData(sizeof(size_t) + sizeof(qint64));
         auto item = AceTreeItem::read(in);
         if (!item) {
             in.setStatus(QDataStream::ReadCorruptData);
@@ -150,8 +214,32 @@ namespace Operations {
     bool ElementAddOp::write(QDataStream &out) const {
         out << parent;
         AceTreePrivate::operator<<(out, key);
+        out << child->index();
+
+        out.skipRawData(sizeof(qint64));
+        auto &dev = *out.device();
+        auto pos = dev.pos();
+
         child->write(out);
+
+        auto pos1 = dev.pos();
+        dev.seek(pos - sizeof(qint64));
+        out << (pos1 - pos);
+        dev.seek(pos1);
+
         return out.status() == QDataStream::Ok;
+    }
+
+    bool ElementAddOp::readBrief(QDataStream &in) {
+        in >> parent;
+        AceTreePrivate::operator>>(in, key);
+        in >> childId;
+
+        qint64 delta;
+        in >> delta;
+        in.skipRawData(delta);
+
+        return in.status() == QDataStream::Ok;
     }
 
     bool ElementRemoveOp::read(QDataStream &in) {
@@ -166,6 +254,10 @@ namespace Operations {
         AceTreePrivate::operator<<(out, key);
         out << child;
         return out.status() == QDataStream::Ok;
+    }
+
+    RootChangeOp::~RootChangeOp() {
+        delete newRoot;
     }
 
     bool RootChangeOp::read(QDataStream &in) {
@@ -196,6 +288,11 @@ namespace Operations {
             out << size_t(0);
         }
         return out.status() == QDataStream::Ok;
+    }
+
+    bool RootChangeOp::readBrief(QDataStream &in) {
+        in >> oldRoot >> newRootId;
+        return in.status() == QDataStream::Ok;
     }
 
     BaseOp *toOp(AceTreeEvent *e) {
@@ -318,18 +415,12 @@ namespace Operations {
         return res;
     }
 
-    AceTreeEvent *fromOp(BaseOp *baseOp, QHash<size_t, AceTreeItem *> &hash) {
-        auto propagate = [&hash](AceTreeItem *item) {
-            AceTreeItemPrivate::propagate(item, [&hash](AceTreeItem *item) {
-                hash.insert(item->index(), item); //
-            });
-        };
-
+    AceTreeEvent *fromOp(BaseOp *baseOp, AceTreeModel *model, bool brief) {
         AceTreeEvent *res = nullptr;
         switch (baseOp->c) {
             case PropertyChange: {
                 auto op = static_cast<PropertyChangeOp *>(baseOp);
-                auto item = hash.value(op->parent);
+                auto item = model->itemFromIndex(op->parent);
                 if (!item)
                     return nullptr;
                 auto e = new AceTreeValueEvent(AceTreeEvent::PropertyChange, item, op->key,
@@ -339,7 +430,7 @@ namespace Operations {
             }
             case BytesReplace: {
                 auto op = static_cast<BytesReplaceOp *>(baseOp);
-                auto item = hash.value(op->parent);
+                auto item = model->itemFromIndex(op->parent);
                 if (!item)
                     return nullptr;
                 auto e = new AceTreeBytesEvent(AceTreeEvent::BytesReplace, item, op->index,
@@ -350,7 +441,7 @@ namespace Operations {
             case BytesInsert:
             case BytesRemove: {
                 auto op = static_cast<BytesInsertRemoveOp *>(baseOp);
-                auto item = hash.value(op->parent);
+                auto item = model->itemFromIndex(op->parent);
                 if (!item)
                     return nullptr;
                 auto e = new AceTreeBytesEvent(op->c == BytesInsert ? AceTreeEvent::BytesInsert
@@ -361,22 +452,41 @@ namespace Operations {
             }
             case RowsInsert: {
                 auto op = static_cast<RowsInsertOp *>(baseOp);
-                auto item = hash.value(op->parent);
+                auto item = model->itemFromIndex(op->parent);
                 if (!item)
                     return nullptr;
-                auto e = new AceTreeRowsInsDelEvent(AceTreeEvent::RowsInsert, item, op->index,
-                                                    op->children);
+
+                QVector<AceTreeItem *> children;
+                if (brief) {
+                    // Use Brief
+                    children.reserve(op->children.size());
+                    for (const auto &id : qAsConst(op->childrenIds)) {
+                        auto child = model->itemFromIndex(id);
+                        if (!child)
+                            return nullptr;
+                        children.append(child);
+                    }
+                } else {
+                    children = op->children;
+
+                    // Add children
+                    for (const auto &child : qAsConst(op->children)) {
+                        AceTreeModelPrivate::get(model)->propagate_model(child);
+                    }
+
+                    // Remove ownership
+                    op->children.clear();
+                }
+
+                auto e =
+                    new AceTreeRowsInsDelEvent(AceTreeEvent::RowsInsert, item, op->index, children);
                 res = e;
 
-                // Add children
-                for (const auto &child : qAsConst(op->children)) {
-                    propagate(child);
-                }
                 break;
             }
             case RowsMove: {
                 auto op = static_cast<RowsMoveOp *>(baseOp);
-                auto item = hash.value(op->parent);
+                auto item = model->itemFromIndex(op->parent);
                 if (!item)
                     return nullptr;
                 auto e = new AceTreeRowsMoveEvent(AceTreeEvent::RowsMove, item, op->index,
@@ -386,7 +496,7 @@ namespace Operations {
             }
             case RowsRemove: {
                 auto op = static_cast<RowsRemoveOp *>(baseOp);
-                auto item = hash.value(op->parent);
+                auto item = model->itemFromIndex(op->parent);
                 if (!item)
                     return nullptr;
 
@@ -394,7 +504,7 @@ namespace Operations {
                 QVector<AceTreeItem *> children;
                 children.reserve(op->children.size());
                 for (const auto &id : qAsConst(op->children)) {
-                    auto child = hash.value(id);
+                    auto child = model->itemFromIndex(id);
                     if (!child)
                         return nullptr;
                     children.append(child);
@@ -407,24 +517,37 @@ namespace Operations {
             }
             case RecordAdd: {
                 auto op = static_cast<RecordAddOp *>(baseOp);
-                auto item = hash.value(op->parent);
+                auto item = model->itemFromIndex(op->parent);
                 if (!item)
                     return nullptr;
-                auto e = new AceTreeRecordEvent(AceTreeEvent::RecordAdd, item, op->seq, op->child);
-                res = e;
 
-                // Add child
-                propagate(op->child);
+                AceTreeItem *child;
+                if (brief) {
+                    // Use brief
+                    child = model->itemFromIndex(op->childId);
+                    if (!child)
+                        return nullptr;
+                } else {
+                    // Add child
+                    AceTreeModelPrivate::get(model)->propagate_model(op->child);
+                    child = op->child;
+
+                    // Remove ownership
+                    op->child = nullptr;
+                }
+
+                auto e = new AceTreeRecordEvent(AceTreeEvent::RecordAdd, item, op->seq, child);
+                res = e;
                 break;
             }
             case RecordRemove: {
                 auto op = static_cast<RecordRemoveOp *>(baseOp);
-                auto item = hash.value(op->parent);
+                auto item = model->itemFromIndex(op->parent);
                 if (!item)
                     return nullptr;
 
                 // Search children
-                auto child = hash.value(op->child);
+                auto child = model->itemFromIndex(op->child);
                 if (!child)
                     return nullptr;
 
@@ -434,25 +557,38 @@ namespace Operations {
             }
             case ElementAdd: {
                 auto op = static_cast<ElementAddOp *>(baseOp);
-                auto item = hash.value(op->parent);
+                auto item = model->itemFromIndex(op->parent);
                 if (!item)
                     return nullptr;
-                auto e =
-                    new AceTreeElementEvent(AceTreeEvent::ElementAdd, item, op->key, op->child);
+
+                AceTreeItem *child;
+                if (brief) {
+                    // Use brief
+                    child = model->itemFromIndex(op->childId);
+                    if (!child)
+                        return nullptr;
+                } else {
+                    // Add child
+                    AceTreeModelPrivate::get(model)->propagate_model(op->child);
+                    child = op->child;
+
+                    // Remove ownership
+                    op->child = nullptr;
+                }
+
+                auto e = new AceTreeElementEvent(AceTreeEvent::ElementAdd, item, op->key, child);
                 res = e;
 
-                // Add child
-                propagate(op->child);
                 break;
             }
             case ElementRemove: {
                 auto op = static_cast<ElementRemoveOp *>(baseOp);
-                auto item = hash.value(op->parent);
+                auto item = model->itemFromIndex(op->parent);
                 if (!item)
                     return nullptr;
 
                 // Search children
-                auto child = hash.value(op->child);
+                auto child = model->itemFromIndex(op->child);
                 if (!child)
                     return nullptr;
 
@@ -464,16 +600,34 @@ namespace Operations {
                 auto op = static_cast<RootChangeOp *>(baseOp);
                 AceTreeItem *oldRoot = nullptr;
                 if (op->oldRoot != 0) {
-                    oldRoot = hash.value(op->oldRoot);
+                    oldRoot = model->itemFromIndex(op->oldRoot);
                     if (!oldRoot)
                         return nullptr;
                 }
 
-                auto e = new AceTreeRootEvent(AceTreeEvent::RootChange, op->newRoot, oldRoot);
-                res = e;
+                AceTreeItem *newRoot;
+                if (brief) {
+                    // Use brief
+                    if (op->newRootId == 0) {
+                        newRoot = nullptr;
+                    } else {
+                        newRoot = model->itemFromIndex(op->newRootId);
+                        if (!newRoot)
+                            return nullptr;
+                    }
+                } else {
+                    // Add child
+                    if (op->newRoot) {
+                        AceTreeModelPrivate::get(model)->propagate_model(op->newRoot);
+                    }
+                    newRoot = op->newRoot;
 
-                // Add child
-                propagate(op->newRoot);
+                    // Remove ownership
+                    op->newRoot = nullptr;
+                }
+
+                auto e = new AceTreeRootEvent(AceTreeEvent::RootChange, newRoot, oldRoot);
+                res = e;
                 break;
             }
         }

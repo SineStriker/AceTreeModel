@@ -10,11 +10,16 @@ namespace Tasks {
     enum TaskType {
         Commit,
         ChangeStep,
+        ReadCheckPoint,
         WriteCheckPoint,
         UpdateModelInfo,
-        Exit,
     };
     Q_ENUM_NS(TaskType);
+
+    struct OpsAndAttrs {
+        QVector<Operations::BaseOp *> operations;
+        QHash<QString, QString> attributes;
+    };
 
     struct BaseTask {
         BaseTask(TaskType type) : t(type) {
@@ -25,29 +30,40 @@ namespace Tasks {
     };
 
     struct CommitTask : public BaseTask {
-        CommitTask() : BaseTask(Commit) {
+        CommitTask() : BaseTask(Commit), fsStep(-1), fsMin(-1) {
         }
         ~CommitTask();
 
-        QVector<Operations::BaseOp *> operations;
-        QHash<QString, QString> attributes;
+        OpsAndAttrs data;
+        int fsStep;
+        int fsMin;
     };
 
     struct ChangeStepTask : public BaseTask {
-        ChangeStepTask() : BaseTask(ChangeStep), current(0), total(0) {
+        ChangeStepTask() : BaseTask(ChangeStep), fsStep(0) {
         }
         ~ChangeStepTask();
 
-        int current;
-        int total;
+        int fsStep;
     };
 
-    struct WriteCheckPointTask : public BaseTask {
-        WriteCheckPointTask() : BaseTask(WriteCheckPoint), root(nullptr) {
+    struct WriteCkptTask : public BaseTask {
+        WriteCkptTask() : BaseTask(WriteCheckPoint), num(0), root(nullptr) {
         }
-        ~WriteCheckPointTask();
+        ~WriteCkptTask();
 
+        int num;
         AceTreeItem *root;
+        QVector<AceTreeItem *> removedItems;
+    };
+
+    struct ReadCkptTask : public BaseTask {
+        ReadCkptTask() : BaseTask(ReadCheckPoint), num(0), buf(nullptr) {
+        }
+        ~ReadCkptTask();
+
+        int num;
+        void *buf;
     };
 
     struct UpdateModelInfoTask : public BaseTask {

@@ -13,7 +13,7 @@ public:
 
     AceTreeMemBackend *q_ptr;
 
-    int maxReserved;
+    int maxSteps;
 
     AceTreeModel *model;
     QVariantHash modelInfo;
@@ -22,18 +22,16 @@ public:
         QList<AceTreeEvent *> events;
         QHash<QString, QString> attrs;
     };
-    QList<TransactionData> stack;
-    int minStep;
-    int step;
+    QVector<TransactionData> stack;
+    int min;
+    int current;
 
-    virtual void modelInfoSet();
+    void removeEvents(int begin, int end);
 
-    virtual void afterChangeStep(int step);
+    virtual void afterModelInfoSet();
+    virtual void afterCurrentChange();
     virtual void afterCommit(const QList<AceTreeEvent *> &events,
                              const QHash<QString, QString> &attributes);
-
-    void removeForwardSteps();
-    void removeEarlySteps();
 };
 
 #endif // ACETREEMEMBACKEND_P_H

@@ -12,11 +12,18 @@ public:
     explicit AceTreeJournalBackend(QObject *parent = nullptr);
     ~AceTreeJournalBackend();
 
+    int reservedCheckPoints() const;
+    void setReservedCheckPoints(int n);
+
     bool start(const QString &dir);
     bool recover(const QString &dir);
 
 public:
     void setup(AceTreeModel *model) override;
+
+    int min() const override;
+    int max() const override;
+    QHash<QString, QString> attributes(int step) const override;
 
 protected:
     AceTreeJournalBackend(AceTreeJournalBackendPrivate &d, QObject *parent = nullptr);

@@ -79,12 +79,16 @@ namespace Operations {
     struct RowsInsertOp : public BaseOp {
         RowsInsertOp() : BaseOp(RowsInsert), parent(0), index(0) {
         }
+        ~RowsInsertOp();
 
         bool read(QDataStream &in) override;
         bool write(QDataStream &out) const override;
 
+        bool readBrief(QDataStream &in);
+
         size_t parent;
         int index;
+        QVector<size_t> childrenIds;
         QVector<AceTreeItem *> children;
     };
 
@@ -114,23 +118,23 @@ namespace Operations {
     };
 
     struct RecordAddOp : public BaseOp {
-        RecordAddOp() : BaseOp(RecordAdd), parent(0), seq(-1), child(nullptr) {
+        RecordAddOp() : BaseOp(RecordAdd), parent(0), seq(-1), childId(0), child(nullptr) {
         }
-        ~RecordAddOp() {
-        }
+        ~RecordAddOp();
 
         bool read(QDataStream &in) override;
         bool write(QDataStream &out) const override;
 
+        bool readBrief(QDataStream &in);
+
         size_t parent;
         int seq;
+        size_t childId;
         AceTreeItem *child;
     };
 
     struct RecordRemoveOp : public BaseOp {
         RecordRemoveOp() : BaseOp(RecordRemove), parent(0), seq(-1), child(0) {
-        }
-        ~RecordRemoveOp() {
         }
 
         bool read(QDataStream &in) override;
@@ -142,23 +146,23 @@ namespace Operations {
     };
 
     struct ElementAddOp : public BaseOp {
-        ElementAddOp() : BaseOp(ElementAdd), parent(0), child(nullptr) {
+        ElementAddOp() : BaseOp(ElementAdd), parent(0), childId(0), child(nullptr) {
         }
-        ~ElementAddOp() {
-        }
+        ~ElementAddOp();
 
         bool read(QDataStream &in) override;
         bool write(QDataStream &out) const override;
 
+        bool readBrief(QDataStream &in);
+
         size_t parent;
         QString key;
+        size_t childId;
         AceTreeItem *child;
     };
 
     struct ElementRemoveOp : public BaseOp {
         ElementRemoveOp() : BaseOp(ElementRemove), parent(0), child(0) {
-        }
-        ~ElementRemoveOp() {
         }
 
         bool read(QDataStream &in) override;
@@ -170,20 +174,24 @@ namespace Operations {
     };
 
     struct RootChangeOp : public BaseOp {
-        RootChangeOp() : BaseOp(RootChange), oldRoot(0), newRoot(nullptr) {
+        RootChangeOp() : BaseOp(RootChange), oldRoot(0), newRootId(0), newRoot(nullptr) {
         }
-        ~RootChangeOp() {
-        }
+        ~RootChangeOp();
 
         bool read(QDataStream &in) override;
         bool write(QDataStream &out) const override;
 
+        bool readBrief(QDataStream &in);
+
         size_t oldRoot;
+        size_t newRootId;
         AceTreeItem *newRoot;
     };
 
     BaseOp *toOp(AceTreeEvent *e);
-    AceTreeEvent *fromOp(BaseOp *baseOp, QHash<size_t, AceTreeItem *> &hash);
+
+    // Will move all tree items from op to model, the op can be deleted later
+    AceTreeEvent *fromOp(BaseOp *baseOp, AceTreeModel *model, bool brief);
 
 } // namespace Operations
 
