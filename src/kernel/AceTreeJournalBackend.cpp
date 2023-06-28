@@ -460,6 +460,9 @@ void AceTreeJournalBackendPrivate::updateStackSize() {
         int size = stack.size() - 2 * maxSteps - 1;
 
         if (size > 0) {
+            // Abort forward transactions reading task
+            abortForwardReadTask();
+
             // Remove tail
             removeEvents(2 * maxSteps + 1, stack.size());
 
@@ -469,6 +472,9 @@ void AceTreeJournalBackendPrivate::updateStackSize() {
         }
 
     } else if (current > maxSteps * 2.5) {
+        // Abort backward transactions reading task
+        abortBackwardReadTask();
+
         // Remove head
         removeEvents(0, maxSteps);
         min += maxSteps;
@@ -489,9 +495,6 @@ void AceTreeJournalBackendPrivate::afterModelInfoSet() {
 
 void AceTreeJournalBackendPrivate::afterCommit(const QList<AceTreeEvent *> &events,
                                                const QHash<QString, QString> &attributes) {
-    // Abort forward transactions reading task
-    abortForwardReadTask();
-
     // Update fsMax
     fsMax = min + current;
 
@@ -501,6 +504,13 @@ void AceTreeJournalBackendPrivate::afterCommit(const QList<AceTreeEvent *> &even
         (expectMin = ((fsMax - 1) / maxSteps - (maxCheckPoints + 3)) * maxSteps) > fsMin) {
         fsMin = expectMin;
     }
+
+    // Abort forward transactions reading task
+    abortForwardReadTask();
+
+    // Abort backward transactions reading task
+    if (current > maxSteps * 1.5)
+        abortBackwardReadTask();
 
     // Delete formal checkpoint task
     auto rem = stack.size() % maxSteps;
@@ -540,28 +550,30 @@ void AceTreeJournalBackendPrivate::afterCommit(const QList<AceTreeEvent *> &even
 }
 
 void AceTreeJournalBackendPrivate::abortBackwardReadTask() {
-    if (backward_buf) {
-        std::unique_lock<std::mutex> lock(backward_buf->mtx);
-        if (backward_buf->finished) {
-            delete backward_buf;
-            backward_buf = nullptr;
-        } else {
-            backward_buf->obsolete = true;
-            backward_buf = nullptr;
-        }
+    if (!backward_buf) {
+        return;
+    }
+    std::unique_lock<std::mutex> lock(backward_buf->mtx);
+    if (backward_buf->finished) {
+        delete backward_buf;
+        backward_buf = nullptr;
+    } else {
+        backward_buf->obsolete = true;
+        backward_buf = nullptr;
     }
 }
 
 void AceTreeJournalBackendPrivate::abortForwardReadTask() {
-    if (forward_buf) {
-        std::unique_lock<std::mutex> lock(forward_buf->mtx);
-        if (forward_buf->finished) {
-            delete forward_buf;
-            forward_buf = nullptr;
-        } else {
-            forward_buf->obsolete = true;
-            forward_buf = nullptr;
-        }
+    if (!forward_buf) {
+        return;
+    }
+    std::unique_lock<std::mutex> lock(forward_buf->mtx);
+    if (forward_buf->finished) {
+        delete forward_buf;
+        forward_buf = nullptr;
+    } else {
+        forward_buf->obsolete = true;
+        forward_buf = nullptr;
     }
 }
 

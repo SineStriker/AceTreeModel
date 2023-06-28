@@ -6,3 +6,4 @@ This library is a sub-project of [ChorusKit](https://github.com/SineStriker/qsyn
 
 ## Intro
 
+![](docs/images/model.png)
