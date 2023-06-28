@@ -23,7 +23,7 @@ AceTreeModelPrivate::AceTreeModelPrivate() {
     backend = nullptr;
     m_state = AceTreeModel::Idle;
     m_metaOperation = false;
-    maxIndex = 1;
+    maxIndex = 0;
     rootItem = nullptr;
 }
 
@@ -60,14 +60,13 @@ void AceTreeModelPrivate::setRootItem_helper(AceTreeItem *item) {
 void AceTreeModelPrivate::setRootItem_fake(AceTreeItem *item) {
     if (item) {
         propagate_model(item);
-        if (!item->d_func()->m_managed)
-            item->d_func()->changeManaged(true);
     }
     rootItem = item;
 }
 
 int AceTreeModelPrivate::addIndex(AceTreeItem *item, size_t idx) {
-    int index = idx > 0 ? (maxIndex = qMax(maxIndex, idx), idx) : maxIndex++;
+    int index = idx > 0 ? (maxIndex = qMax(maxIndex, idx), idx) : (++maxIndex);
+    qDebug() << item << index;
     indexes.insert(std::make_pair(index, item));
     return index;
 }

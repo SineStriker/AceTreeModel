@@ -38,10 +38,12 @@ public:
         QVector<AceTreeItem *> removedItems;
         QVector<Tasks::OpsAndAttrs> backwardData;
         QVector<Tasks::OpsAndAttrs> forwardData;
+        QVariantHash modelInfo;
 
         ~RecoverData();
     };
     RecoverData *recoverData;
+    Tasks::WriteCkptTask *writeCkptTask;
 
     QHash<QString, QString> fs_getAttributes(int step) const;
     QHash<QString, QString> fs_getAttributes_do(int step) const;
@@ -49,7 +51,11 @@ public:
     static bool readJournal(QFile &file, int maxSteps, QVector<Tasks::OpsAndAttrs> &res,
                             bool brief);
     static bool readCheckPoint(QFile &file, AceTreeItem **rootRef,
-                               QVector<AceTreeItem *> &removedItemsRef);
+                               QVector<AceTreeItem *> *removedItemsRef);
+    static bool writeCheckPoint(QFile &file, AceTreeItem *root,
+                                const QVector<AceTreeItem *> &removedItems);
+
+    Tasks::WriteCkptTask *genWriteCkptTask() const;
 
     void updateStackSize();
 

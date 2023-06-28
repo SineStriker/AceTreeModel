@@ -18,7 +18,7 @@ void AceTreeMemBackendPrivate::init() {
 }
 
 void AceTreeMemBackendPrivate::removeEvents(int b, int e) {
-    if (b >= e){
+    if (b >= e) {
         return;
     }
 
@@ -111,7 +111,7 @@ int AceTreeMemBackend::current() const {
 
 QHash<QString, QString> AceTreeMemBackend::attributes(int step) const {
     Q_D(const AceTreeMemBackend);
-    step -= d->min;
+    step -= d->min + 1;
     if (step < 0 || step >= d->stack.size())
         return {};
     return d->stack.at(step).attrs;

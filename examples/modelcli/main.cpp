@@ -23,6 +23,7 @@ static const char *help_display[] = {
     "    rid                                Show root id",
     "    temp                               Show all temp items' id",
     "    steps                              Show step information",
+    "    attr                               Show step attributes",
     "    undo                               Undo",
     "    redo                               Redo",
     "",
@@ -225,6 +226,14 @@ static void cli() {
             continue;
         }
 
+        // attr
+        if (cmd == "attr") {
+            ENSURE_SIZE(2);
+            auto id = list.at(1).toInt();
+            qDebug() << model->stepAttributes(id);
+            continue;
+        }
+
         // Undo
         if (cmd == "undo") {
             model->previousStep();
@@ -246,7 +255,7 @@ static void cli() {
                 qDebug() << "Failed";
             }
             if (tx)
-                model->commitTransaction();
+                model->commitTransaction({{"num", QString::number(model->maxStep())}});
         };
 
         // Set
