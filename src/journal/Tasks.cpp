@@ -8,6 +8,7 @@ namespace Tasks {
     }
 
     CommitTask::~CommitTask() {
+        qDeleteAll(data.operations);
     }
 
     ChangeStepTask::~ChangeStepTask() {

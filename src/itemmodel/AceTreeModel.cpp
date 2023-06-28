@@ -28,6 +28,13 @@ AceTreeModelPrivate::AceTreeModelPrivate() {
 }
 
 AceTreeModelPrivate::~AceTreeModelPrivate() {
+    is_destruct = true;
+
+    // Must delete backend first, the backend has a reference of items on model
+    if (backend) {
+        delete backend;
+    }
+
     AceTreeItemPrivate::forceDeleteItem(rootItem);
 }
 
@@ -57,11 +64,19 @@ void AceTreeModelPrivate::setRootItem_helper(AceTreeItem *item) {
     event_helper(&e2);
 }
 
-void AceTreeModelPrivate::setRootItem_fake(AceTreeItem *item) {
+void AceTreeModelPrivate::setRootItem_backend(AceTreeItem *item) {
     if (item) {
+        if (item->d_func()->m_managed)
+            item->d_func()->changeManaged(false);
         propagate_model(item);
     }
     rootItem = item;
+}
+
+void AceTreeModelPrivate::addManagedItem_backend(AceTreeItem *item) {
+    if (!item->d_func()->m_managed)
+        item->d_func()->changeManaged(true);
+    propagate_model(item);
 }
 
 int AceTreeModelPrivate::addIndex(AceTreeItem *item, size_t idx) {
@@ -120,7 +135,6 @@ AceTreeModel::~AceTreeModel() {
         qFatal("AceTreeModel::~AceTreeModel(): transaction is not commited!!!");
         abortTransaction();
     }
-    d->is_destruct = true;
 }
 
 QVariantHash AceTreeModel::modelInfo() const {

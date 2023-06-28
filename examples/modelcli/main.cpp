@@ -189,6 +189,7 @@ static void cli() {
             qDebug() << "id:"
                      << (item->index() == 0 ? item->dynamicData("_temp_id").toInt()
                                             : int(item->index()));
+            qDebug() << "managed:" << item->isManaged();
             qDebug() << "properties:";
             auto map = item->propertyMap();
             for (auto it = map.begin(); it != map.end(); ++it) {
@@ -619,7 +620,9 @@ int main(int argc, char *argv[]) {
     auto backend = new AceTreeJournalBackend();
     auto dir = QDir(QCoreApplication::applicationDirPath() + "/model");
     if (dir.exists()) {
-        backend->recover(dir.absolutePath());
+        if (!backend->recover(dir.absolutePath())) {
+            backend->start(dir.absolutePath());
+        }
     } else {
         dir.mkpath(dir.absolutePath());
         backend->start(dir.absolutePath());

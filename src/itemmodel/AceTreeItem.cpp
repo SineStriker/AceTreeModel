@@ -7,7 +7,7 @@
 #include <QDebug>
 #include <QtEndian>
 
-// #define ENABLE_DEBUG_COUNT
+#define ENABLE_DEBUG_COUNT
 
 #define myWarning(func) (qWarning().nospace() << "AceTreeItem::" << (func) << "():").space()
 
@@ -1170,16 +1170,16 @@ void AceTreeItemSubscriber::event(AceTreeEvent *e) {
 
 namespace AceTreePrivate {
 
-    static int readBlock(QDataStream &stream, char *data, int len) {
-        // Disable reads on failure in transacted stream
-        if (stream.status() != QDataStream::Ok && stream.device()->isTransactionStarted())
-            return -1;
+    //    static int readBlock(QDataStream &stream, char *data, int len) {
+    //        // Disable reads on failure in transacted stream
+    //        if (stream.status() != QDataStream::Ok && stream.device()->isTransactionStarted())
+    //            return -1;
 
-        const int readResult = stream.device()->read(data, len);
-        if (readResult != len)
-            stream.setStatus(QDataStream::ReadPastEnd);
-        return readResult;
-    }
+    //        const int readResult = stream.device()->read(data, len);
+    //        if (readResult != len)
+    //            stream.setStatus(QDataStream::ReadPastEnd);
+    //        return readResult;
+    //    }
 
     //    QDataStream &operator>>(QDataStream &in, size_t &i) {
     //        i = 0;

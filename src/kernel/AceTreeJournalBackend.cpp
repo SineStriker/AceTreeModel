@@ -68,7 +68,7 @@ void AceTreeJournalBackendPrivate::setup_helper() {
     modelInfo = recoverData->modelInfo;
 
     if (recoverData->root) {
-        AceTreeModelPrivate::get(model)->setRootItem_fake(recoverData->root);
+        AceTreeModelPrivate::get(model)->setRootItem_backend(recoverData->root);
         recoverData->root = nullptr; // Get ownership
     }
 
@@ -398,7 +398,7 @@ bool AceTreeJournalBackendPrivate::writeCheckPoint(QFile &file, AceTreeItem *roo
 
     // Write removed items data
     for (const auto &item : qAsConst(removedItems)) {
-        item->write(out);
+        AceTreeItemPrivate::get(item)->write_helper(out, false);
     }
     return true;
 }
@@ -577,7 +577,7 @@ void AceTreeJournalBackendPrivate::extractBackwardJournal(QVector<AceTreeItem *>
 
     // Add removed items to model
     for (const auto &item : qAsConst(removedItems)) {
-        model_p->propagate_model(item);
+        model_p->addManagedItem_backend(item);
     }
 
     // Get ownership

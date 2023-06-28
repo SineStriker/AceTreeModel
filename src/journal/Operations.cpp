@@ -76,7 +76,7 @@ namespace Operations {
         auto pos = dev.pos();
 
         for (const auto &child : qAsConst(children)) {
-            child->write(out);
+            AceTreeItemPrivate::get(child)->write_helper(out, false);
             if (out.status() != QDataStream::Ok) {
                 return false;
             }
@@ -417,6 +417,12 @@ namespace Operations {
 
     AceTreeEvent *fromOp(BaseOp *baseOp, AceTreeModel *model, bool brief) {
         AceTreeEvent *res = nullptr;
+
+        auto setupItem = [model](AceTreeItem *item) {
+            // Add to model
+            AceTreeModelPrivate::get(model)->addManagedItem_backend(item);
+        };
+
         switch (baseOp->c) {
             case PropertyChange: {
                 auto op = static_cast<PropertyChangeOp *>(baseOp);
@@ -471,7 +477,7 @@ namespace Operations {
 
                     // Add children
                     for (const auto &child : qAsConst(op->children)) {
-                        AceTreeModelPrivate::get(model)->propagate_model(child);
+                        setupItem(child);
                     }
 
                     // Remove ownership
@@ -529,7 +535,7 @@ namespace Operations {
                         return nullptr;
                 } else {
                     // Add child
-                    AceTreeModelPrivate::get(model)->propagate_model(op->child);
+                    setupItem(op->child);
                     child = op->child;
 
                     // Remove ownership
@@ -569,7 +575,7 @@ namespace Operations {
                         return nullptr;
                 } else {
                     // Add child
-                    AceTreeModelPrivate::get(model)->propagate_model(op->child);
+                    setupItem(op->child);
                     child = op->child;
 
                     // Remove ownership
@@ -618,7 +624,7 @@ namespace Operations {
                 } else {
                     // Add child
                     if (op->newRoot) {
-                        AceTreeModelPrivate::get(model)->propagate_model(op->newRoot);
+                        setupItem(op->newRoot);
                     }
                     newRoot = op->newRoot;
 
