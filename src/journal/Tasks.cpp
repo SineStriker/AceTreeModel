@@ -17,6 +17,7 @@ namespace Tasks {
     }
 
     WriteCkptTask::~WriteCkptTask() {
+        // Delete items after writing
         delete root;
         qDeleteAll(removedItems);
     }

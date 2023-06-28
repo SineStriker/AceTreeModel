@@ -25,6 +25,14 @@ namespace Operations {
     };
     Q_ENUM_NS(Change)
 
+    /*
+     * Read brief mode: for insertion operation, if read backward ones,
+     * it's not necessary to deserialize the items, only need to read their
+     * indexes, because we have already deserialized them when reading the
+     * next checkpoint.
+     *
+     */
+
     struct BaseOp {
         explicit BaseOp(Change c) : c(c) {
         }

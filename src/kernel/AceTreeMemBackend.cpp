@@ -18,6 +18,10 @@ void AceTreeMemBackendPrivate::init() {
 }
 
 void AceTreeMemBackendPrivate::removeEvents(int b, int e) {
+    if (b >= e){
+        return;
+    }
+
     auto begin = stack.begin() + b;
     auto end = stack.begin() + e;
     for (auto it = begin; it != end; ++it) {
@@ -28,10 +32,6 @@ void AceTreeMemBackendPrivate::removeEvents(int b, int e) {
         }
     }
     stack.erase(begin, end);
-
-    qDebug().nospace() << "[AceTreeBackend] remove events (" << b << ", " << e << ") min=" << min
-                       << ", current=" << current << ", "
-                       << "step=" << (min + current) << ", size=" << stack.size();
 }
 
 void AceTreeMemBackendPrivate::afterModelInfoSet() {

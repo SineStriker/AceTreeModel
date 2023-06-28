@@ -10,12 +10,13 @@
 #include <QTimer>
 
 #define myWarning(func)                                                                            \
-    (qWarning().nospace() << "AceTreeJournalBackend::" << (func) << "(): ").maybeSpace()
+    (qWarning().nospace() << "AceTreeJournalBackend::" << (func) << "():").space()
 
 AceTreeJournalBackendPrivate::AceTreeJournalBackendPrivate() {
     maxCheckPoints = 1;
     worker = nullptr;
     fsMin = fsMax = 0;
+    recoverData = nullptr;
     backward_buf = forward_buf = nullptr;
     stepFile = infoFile = txFile = nullptr;
     txNum = -1;
@@ -23,6 +24,10 @@ AceTreeJournalBackendPrivate::AceTreeJournalBackendPrivate() {
 }
 
 AceTreeJournalBackendPrivate::~AceTreeJournalBackendPrivate() {
+    if (recoverData) {
+        delete recoverData;
+    }
+
     if (worker) {
         worker->join();
         delete worker;
@@ -36,9 +41,331 @@ AceTreeJournalBackendPrivate::~AceTreeJournalBackendPrivate() {
 void AceTreeJournalBackendPrivate::init() {
 }
 
-QHash<QString, QString> AceTreeJournalBackendPrivate::fs_getAttribute(int step) const {
+void AceTreeJournalBackendPrivate::setup_helper() {
+    if (!recoverData) {
+        return;
+    }
+
+    fsMin2 = fsMin = recoverData->fsMin;
+    fsMax2 = fsMax = recoverData->fsMax;
+    fsStep2 = recoverData->fsStep;
+
+    if (recoverData->root) {
+        AceTreeModelPrivate::get(model)->setRootItem_fake(recoverData->root);
+        recoverData->root = nullptr; // Get ownership
+    }
+
+    current = 0;
+    min = recoverData->currentNum * maxSteps;
+
+    // Get backward transactions
+    if (!recoverData->backwardData.isEmpty()) {
+        extractBackwardJournal(recoverData->removedItems, recoverData->backwardData);
+    }
+
+    // Get forward transactions
+    if (!recoverData->forwardData.isEmpty()) {
+        extractForwardJournal(recoverData->forwardData);
+    }
+
+    int expected = fsStep2 - min;
+
+    // Undo or redo
+    while (current > expected) {
+        const auto &tx = stack.at(current - 1);
+        for (auto it = tx.events.rbegin(); it != tx.events.rend(); ++it) {
+            AceTreeItemPrivate::executeEvent(*it, true);
+        }
+        current--;
+    }
+
+    while (current < expected) {
+        const auto &tx = stack.at(current);
+        for (auto it = tx.events.begin(); it != tx.events.end(); ++it) {
+            AceTreeItemPrivate::executeEvent(*it, false);
+        }
+        current++;
+    }
+
+    delete recoverData;
+    recoverData = nullptr;
+}
+
+QHash<QString, QString> AceTreeJournalBackendPrivate::fs_getAttributes(int step) const {
     Q_UNUSED(step);
-    return {};
+
+    if (!worker) {
+        return fs_getAttributes_do(step);
+    }
+
+    auto task = new Tasks::ReadAttributesTask();
+    task->step = step;
+
+    AttributesTaskBuffer buf;
+    task->buf = &buf;
+
+    std::unique_lock<std::mutex> lock(buf.mtx);
+    const_cast<AceTreeJournalBackendPrivate *>(this)->pushTask(task, true);
+    while (!buf.finished) {
+        buf.cv.wait(lock);
+    }
+    return buf.res;
+}
+
+QHash<QString, QString> AceTreeJournalBackendPrivate::fs_getAttributes_do(int step) const {
+    int num = (step - 1) / maxSteps;
+
+    QFile file;
+    QDataStream in;
+    if (num == txNum) {
+        in.setDevice(txFile);
+    } else {
+        file.setFileName(QString("%1/journal_%2.dat").arg(dir, QString::number(num)));
+        if (!file.open(QIODevice::ReadOnly)) {
+            return {};
+        }
+        in.setDevice(&file);
+    }
+
+    auto &dev = *in.device();
+    auto pos0 = dev.pos();
+
+    int cur = (step - 1) % maxSteps + 1;
+    if (cur == 1) {
+        dev.seek((maxSteps + 2) * sizeof(qint64)); // Data section start
+    } else {
+        dev.seek((cur - 1) * sizeof(qint64));      // Previous transaction end
+        qint64 pos;
+        in >> pos;
+        dev.seek(pos);
+    }
+
+    QHash<QString, QString> res;
+    in >> res;
+    if (in.status() != QDataStream::Ok) {
+        res.clear();
+    }
+
+    // Restore pos
+    dev.seek(pos0);
+    return res;
+}
+
+bool AceTreeJournalBackendPrivate::readJournal(QFile &file, int maxSteps,
+                                               QVector<Tasks::OpsAndAttrs> &res, bool brief) {
+    QDataStream in(&file);
+    QList<qint64> positions{
+        static_cast<qint64>((maxSteps + 2) * sizeof(qint64)),
+    };
+
+    qint64 cnt;
+    in >> cnt;
+
+    positions.reserve(cnt);
+    for (int i = 0; i < cnt - 1; ++i) {
+        qint64 pos;
+        in >> pos;
+        positions.append(pos);
+    }
+
+    if (in.status() != QDataStream::Ok) {
+        return false;
+    }
+
+    QVector<Tasks::OpsAndAttrs> data;
+    data.reserve(cnt);
+    for (const auto &pos : qAsConst(positions)) {
+        file.seek(pos);
+
+        // Read attributes
+        QHash<QString, QString> attrs;
+        in >> attrs;
+
+        // Read operations
+        int op_cnt;
+        in >> op_cnt;
+        QVector<Operations::BaseOp *> ops;
+        ops.reserve(op_cnt);
+        for (int i = 0; i < op_cnt; ++i) {
+            bool success = false;
+            Operations::Change c;
+            in >> c;
+
+            Operations::BaseOp *baseOp = nullptr;
+            switch (c) {
+                case Operations::PropertyChange: {
+                    auto op = new Operations::PropertyChangeOp();
+                    success = op->read(in);
+                    baseOp = op;
+                    break;
+                }
+                case Operations::BytesReplace: {
+                    auto op = new Operations::BytesReplaceOp();
+                    success = op->read(in);
+                    baseOp = op;
+                    break;
+                }
+                case Operations::BytesInsert: {
+                    auto op = new Operations::BytesInsertRemoveOp(true);
+                    success = op->read(in);
+                    baseOp = op;
+                    break;
+                }
+                case Operations::BytesRemove: {
+                    auto op = new Operations::BytesInsertRemoveOp(false);
+                    success = op->read(in);
+                    baseOp = op;
+                    break;
+                }
+                case Operations::RowsInsert: {
+                    auto op = new Operations::RowsInsertOp();
+                    success = brief ? op->readBrief(in) : op->read(in);
+                    baseOp = op;
+                    break;
+                }
+                case Operations::RowsMove: {
+                    auto op = new Operations::RowsMoveOp();
+                    success = op->read(in);
+                    baseOp = op;
+                    break;
+                }
+                case Operations::RowsRemove: {
+                    auto op = new Operations::RowsRemoveOp();
+                    success = op->read(in);
+                    baseOp = op;
+                    break;
+                }
+                case Operations::RecordAdd: {
+                    auto op = new Operations::RecordAddOp();
+                    success = brief ? op->readBrief(in) : op->read(in);
+                    baseOp = op;
+                    break;
+                }
+                case Operations::RecordRemove: {
+                    auto op = new Operations::RecordRemoveOp();
+                    success = op->read(in);
+                    baseOp = op;
+                    break;
+                }
+                case Operations::ElementAdd: {
+                    auto op = new Operations::ElementAddOp();
+                    success = brief ? op->readBrief(in) : op->read(in);
+                    baseOp = op;
+                    break;
+                }
+                case Operations::ElementRemove: {
+                    auto op = new Operations::ElementRemoveOp();
+                    success = op->read(in);
+                    baseOp = op;
+                    break;
+                }
+                case Operations::RootChange: {
+                    auto op = new Operations::RootChangeOp();
+                    success = brief ? op->readBrief(in) : op->read(in);
+                    baseOp = op;
+                    break;
+                }
+                default:
+                    break;
+            }
+            ops.append(baseOp);
+
+            if (!success) {
+                qDeleteAll(ops);
+                goto failed;
+            }
+        }
+
+        data.append({ops, attrs});
+    }
+
+    res = std::move(data);
+    return true;
+
+failed:
+    for (const auto &item : qAsConst(data)) {
+        qDeleteAll(item.operations);
+    }
+    return false;
+}
+
+bool AceTreeJournalBackendPrivate::readCheckPoint(QFile &file, AceTreeItem **rootRef,
+                                                  QVector<AceTreeItem *> &removedItemsRef) {
+    QDataStream in(&file);
+    in.skipRawData(4);
+
+    AceTreeItem *root = nullptr;
+    QVector<AceTreeItem *> removedItems;
+
+    if (!rootRef) {
+        // Read removed items pos
+        qint64 pos;
+        in >> pos;
+        file.seek(pos);
+    } else {
+        // Skip removed items pos
+        in.skipRawData(sizeof(qint64));
+
+        // Read root id
+        size_t id;
+        in >> id;
+        if (id != 0) {
+            // Read root
+            root = AceTreeItemPrivate::read_helper(in, false);
+            if (!root) {
+                qDebug() << "read item failed";
+                return false;
+            }
+        }
+    }
+
+    // Read removed items size
+    int sz;
+    in >> sz;
+
+    // Read removed items data
+    removedItems.reserve(sz);
+    for (int i = 0; i < sz; ++i) {
+        auto item = AceTreeItemPrivate::read_helper(in, false);
+        if (!item) {
+            qDeleteAll(removedItems);
+            return false;
+        }
+        removedItems.append(item);
+    }
+
+    if (root) {
+        *rootRef = root;
+    }
+    removedItemsRef = std::move(removedItems);
+    return true;
+}
+
+void AceTreeJournalBackendPrivate::updateStackSize() {
+    if (stack.size() > 2 * maxSteps) {
+        if (current <= maxSteps / 2) {
+            int size = stack.size() - 2 * maxSteps - 1;
+
+            if (size > 0) {
+                // Remove tail
+                removeEvents(2 * maxSteps + 1, stack.size());
+
+                qDebug().noquote().nospace()
+                    << "[Journal] Remove backward transactions, size=" << size << ", min=" << min
+                    << ", current=" << current << ", stack_size=" << stack.size();
+            }
+
+        } else if (current > maxSteps + maxSteps / 2) {
+            // Remove head
+            removeEvents(0, maxSteps);
+            min += maxSteps;
+            current -= maxSteps;
+
+            qDebug().noquote().nospace()
+                << "[Journal] Remove forward transactions, size=" << maxSteps << ", min=" << min
+                << ", current=" << current << ", stack_size=" << stack.size();
+        }
+    }
 }
 
 void AceTreeJournalBackendPrivate::afterModelInfoSet() {
@@ -61,22 +388,8 @@ void AceTreeJournalBackendPrivate::afterCommit(const QList<AceTreeEvent *> &even
         fsMin = expectMin;
     }
 
-    // Add commit task
-    QVector<Operations::BaseOp *> ops;
-    ops.reserve(events.size());
-    for (const auto &event : events) {
-        ops.append(Operations::toOp(event));
-    }
-
-    auto task = new Tasks::CommitTask();
-    task->data = {std::move(ops), attributes};
-    task->fsStep = fsMax;
-    task->fsMin = fsMin;
-    pushTask(task);
-
     // Add checkpoint task
     if (stack.size() % maxSteps == 0) {
-
         // Collect all removed items
         QVector<AceTreeItem *> removedItems;
         for (int i = stack.size() - maxSteps; i != stack.size(); ++i) {
@@ -128,6 +441,20 @@ void AceTreeJournalBackendPrivate::afterCommit(const QList<AceTreeEvent *> &even
         pushTask(task);
     }
 
+    // Add commit task (Must do it after writing checkpoint)
+    {
+        QVector<Operations::BaseOp *> ops;
+        ops.reserve(events.size());
+        for (const auto &event : events) {
+            ops.append(Operations::toOp(event));
+        }
+        auto task = new Tasks::CommitTask();
+        task->data = {std::move(ops), attributes};
+        task->fsStep = fsMax;
+        task->fsMin = fsMin;
+        pushTask(task);
+    }
+
     updateStackSize();
 }
 
@@ -157,16 +484,59 @@ void AceTreeJournalBackendPrivate::abortForwardReadTask() {
     }
 }
 
-void AceTreeJournalBackendPrivate::updateStackSize() {
-    if (current > 2 * maxSteps) {
-        // Remove head
-        removeEvents(0, maxSteps);
-        min += maxSteps;
-        current -= maxSteps;
-    } else if (current <= maxSteps && stack.size() > 2 * maxSteps + 1) {
-        // Remove tail
-        removeEvents(2 * maxSteps + 1, stack.size());
+void AceTreeJournalBackendPrivate::extractBackwardJournal(QVector<AceTreeItem *> &removedItems,
+                                                          QVector<Tasks::OpsAndAttrs> &data) {
+    int size = data.size();
+
+    // Extrack transactions
+    QVector<TransactionData> stack1;
+    stack1.reserve(size);
+
+    auto model_p = AceTreeModelPrivate::get(model);
+
+    // Add removed items to model
+    for (const auto &item : qAsConst(removedItems)) {
+        model_p->propagate_model(item);
     }
+
+    // Get ownership
+    removedItems.clear();
+
+    for (const auto &item : qAsConst(data)) {
+        TransactionData tx;
+        tx.events.reserve(item.operations.size());
+        for (const auto &op : item.operations) {
+            auto e = Operations::fromOp(op, model, true);
+            tx.events.append(e);
+        }
+        tx.attrs = item.attributes;
+        stack1.append(tx);
+    }
+
+    stack = stack1 + stack;
+    min -= size;
+    current += size;
+}
+
+void AceTreeJournalBackendPrivate::extractForwardJournal(QVector<Tasks::OpsAndAttrs> &data) {
+    auto size = data.size();
+
+    // Extrack transactions
+    QVector<TransactionData> stack1;
+    stack1.reserve(size);
+
+    for (const auto &item : qAsConst(data)) {
+        TransactionData tx;
+        tx.events.reserve(item.operations.size());
+        for (const auto &op : item.operations) {
+            auto e = Operations::fromOp(op, model, false);
+            tx.events.append(e);
+        }
+        tx.attrs = item.attributes;
+        stack1.append(tx);
+    }
+
+    stack += stack1;
 }
 
 void AceTreeJournalBackendPrivate::afterCurrentChange() {
@@ -180,121 +550,87 @@ void AceTreeJournalBackendPrivate::afterCurrentChange() {
     }
 
     // Check if backward transactions is enough to undo
-    if (fsMin < min && current <= maxSteps / 2) {
+    if (current <= maxSteps / 2) {
 
-        // Abort forward transactions reading task
-        abortForwardReadTask();
+        if (fsMin < min) {
+            // Abort forward transactions reading task
+            abortForwardReadTask();
 
-        // Need to read backward transactions from file system
-        if (!backward_buf) {
-            int num = min / maxSteps - 1;
+            // Need to read backward transactions from file system
+            if (!backward_buf) {
+                int num = min / maxSteps - 1;
 
-            auto task = new Tasks::ReadCkptTask();
-            task->num = num;
+                auto task = new Tasks::ReadCkptTask();
+                task->num = num;
 
-            // Allocate buffer
-            backward_buf = new CheckPointTaskBuffer();
-            backward_buf->brief = true;
-            task->buf = backward_buf;
+                // Allocate buffer
+                backward_buf = new CheckPointTaskBuffer();
+                backward_buf->brief = true;
+                task->buf = backward_buf;
 
-            pushTask(task);
-        }
-
-        // Need to wait until the reading task finished
-        if (current == 0) {
-            std::unique_lock<std::mutex> lock(backward_buf->mtx);
-            while (!backward_buf->finished) {
-                backward_buf->cv.wait(lock);
-            }
-        }
-
-        // Insert backward transactions
-        if (backward_buf && backward_buf->finished) {
-            int size = backward_buf->data.size();
-
-            // Extrack transactions
-            QVector<TransactionData> stack1;
-            stack1.reserve(size);
-
-            // Add removed items to model
-            for (const auto &item : qAsConst(backward_buf->removedItems)) {
-                AceTreeModelPrivate::get(model)->propagate_model(item);
+                pushTask(task);
             }
 
-            // Get ownership
-            backward_buf->removedItems.clear();
-
-            for (const auto &item : qAsConst(backward_buf->data)) {
-                TransactionData tx;
-                tx.events.reserve(item.operations.size());
-                for (const auto &op : item.operations) {
-                    auto e = Operations::fromOp(op, model, true);
-                    tx.events.append(e);
+            // Need to wait until the reading task finished
+            if (current == 0) {
+                std::unique_lock<std::mutex> lock(backward_buf->mtx);
+                while (!backward_buf->finished) {
+                    backward_buf->cv.wait(lock);
                 }
-                tx.attrs = item.attributes;
-                stack1.append(tx);
             }
 
-            stack = stack1 + stack;
-            delete backward_buf;
-            backward_buf = nullptr;
+            // Insert backward transactions
+            if (backward_buf && backward_buf->finished) {
+                qDebug().noquote().nospace() << "[Journal] Prepend backward transactions, size="
+                                             << backward_buf->data.size();
 
-            min -= size;
-            current += size;
+                extractBackwardJournal(backward_buf->removedItems, backward_buf->data);
+                delete backward_buf;
+                backward_buf = nullptr;
+            }
         }
 
     }
 
     // Check if forward transactions is enough to redo
-    else if (fsMax > min + stack.size() && current >= maxSteps + maxSteps / 2) {
+    else if (current >= stack.size() - maxSteps / 2) {
 
-        // Abort backward transactions reading task
-        abortBackwardReadTask();
+        if (fsMax > min + stack.size()) {
+            // Abort backward transactions reading task
+            abortBackwardReadTask();
 
-        // Need to read backward transactions from file system
-        if (!forward_buf) {
-            int num = (min + stack.size()) / maxSteps;
+            // Need to read backward transactions from file system
+            if (!forward_buf) {
+                int num = (min + stack.size()) / maxSteps;
 
-            auto task = new Tasks::ReadCkptTask();
-            task->num = num;
+                auto task = new Tasks::ReadCkptTask();
+                task->num = num;
 
-            // Allocate buffer
-            forward_buf = new CheckPointTaskBuffer();
-            task->buf = forward_buf;
+                // Allocate buffer
+                forward_buf = new CheckPointTaskBuffer();
+                task->buf = forward_buf;
 
-            pushTask(task);
-        }
-
-        // Need to wait until the reading task finished
-        if (current == stack.size() - 1) {
-            std::unique_lock<std::mutex> lock(forward_buf->mtx);
-            while (!forward_buf->finished) {
-                forward_buf->cv.wait(lock);
+                pushTask(task);
             }
-        }
 
-        // Insert forward transactions
-        if (forward_buf && forward_buf->finished) {
-            auto size = forward_buf->data.size();
-
-            // Extrack transactions
-            QVector<TransactionData> stack1;
-            stack1.reserve(size);
-
-            for (const auto &item : qAsConst(forward_buf->data)) {
-                TransactionData tx;
-                tx.events.reserve(item.operations.size());
-                for (const auto &op : item.operations) {
-                    auto e = Operations::fromOp(op, model, false);
-                    tx.events.append(e);
+            // Need to wait until the reading task finished
+            if (current == stack.size() - 1) {
+                std::unique_lock<std::mutex> lock(forward_buf->mtx);
+                while (!forward_buf->finished) {
+                    forward_buf->cv.wait(lock);
                 }
-                tx.attrs = item.attributes;
-                stack1.append(tx);
             }
 
-            stack += stack1;
-            delete forward_buf;
-            forward_buf = nullptr;
+            // Insert forward transactions
+            if (forward_buf && forward_buf->finished) {
+                qDebug().noquote().nospace()
+                    << "[Journal] Append forward transactions, size=" << forward_buf->data.size();
+
+                // Extrack transactions
+                extractForwardJournal(forward_buf->data);
+                delete forward_buf;
+                forward_buf = nullptr;
+            }
         }
     }
 
@@ -305,9 +641,10 @@ void AceTreeJournalBackendPrivate::afterCurrentChange() {
 /* Steps data
  *
  * 0x0          maxSteps in a checkpoint
- * 0x4          min step in log
- * 0x8          max step in log
- * 0xC          current step
+ * 0x4          maxCheckpoints
+ * 0x8          min step in log
+ * 0xC          max step in log
+ * 0x10         current step
  *
  */
 
@@ -330,7 +667,7 @@ void AceTreeJournalBackendPrivate::afterCurrentChange() {
  * ...
  * 8*maxStep        entry maxStep
  * 8*maxStep+8      0xFFFFFFFFFFFFFFFF
- * 8*maxStep+16     transaction 0
+ * 8*maxStep+16     transaction 0 (attributes + operations)
  * ...
  *
  */
@@ -438,7 +775,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                     file.flush();
                 }
 
-                // Write steps
+                // Write steps (Must do it after writing transaction)
                 {
                     auto &file = stepFile;
                     bool exists = file.exists();
@@ -447,10 +784,10 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                     }
                     QDataStream out(&file);
                     if (!exists) {
-                        // Write initial max steps
-                        out << maxSteps;
+                        // Write initial values
+                        out << maxSteps << maxCheckPoints;
                     } else {
-                        file.seek(4);
+                        file.seek(8);
                     }
                     out << fsMin2 << fsMax2 << fsStep2;
                     file.flush();
@@ -492,7 +829,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                         file.open(QIODevice::ReadWrite | QIODevice::Append);
 
                     QDataStream out(&file);
-                    file.seek(12);
+                    file.seek(16);
                     out << fsStep2;
                     file.flush();
                 }
@@ -504,8 +841,6 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                 auto task = static_cast<Tasks::ReadCkptTask *>(cur_task);
                 auto buf = reinterpret_cast<CheckPointTaskBuffer *>(task->buf);
 
-                QVector<AceTreeItem *> removedItems;
-
                 if (buf->obsolete) {
                     delete buf;
                     break;
@@ -515,27 +850,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                 if (buf->brief) {
                     QFile file(QString("%1/ckpt_%2.dat").arg(dir, QString::number(task->num + 1)));
                     file.open(QIODevice::ReadOnly);
-
-                    QDataStream in(&file);
-                    in.skipRawData(4);
-
-                    // Read removed items pos
-                    size_t offset;
-                    in >> offset;
-                    in.skipRawData(offset);
-
-                    // Read removed items size
-                    int sz;
-                    in >> sz;
-
-                    // Read removed items data
-                    removedItems.reserve(sz);
-                    for (int i = 0; i < sz; ++i) {
-                        auto item = AceTreeItemPrivate::read_helper(in, false);
-                        removedItems.append(item);
-                    }
-
-                    buf->removedItems = std::move(removedItems);
+                    readCheckPoint(file, nullptr, buf->removedItems);
                 }
 
                 if (buf->obsolete) {
@@ -547,121 +862,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                 {
                     QFile file(QString("%1/journal_%2.dat").arg(dir, QString::number(task->num)));
                     file.open(QIODevice::ReadOnly);
-
-                    QDataStream in(&file);
-                    QList<qint64> positions{
-                        static_cast<qint64>((maxSteps + 2) * sizeof(qint64)),
-                    };
-
-                    qint64 cnt;
-                    in >> cnt;
-
-                    positions.reserve(cnt);
-                    for (int i = 0; i < cnt - 1; ++i) {
-                        qint64 pos;
-                        in >> pos;
-                        positions.append(pos);
-                    }
-
-                    buf->data.reserve(cnt);
-                    for (const auto &pos : qAsConst(positions)) {
-                        file.seek(pos);
-
-                        // Read attributes
-                        QHash<QString, QString> attrs;
-                        in >> attrs;
-
-                        // Read operations
-                        int op_cnt;
-                        in >> op_cnt;
-                        QVector<Operations::BaseOp *> ops;
-                        ops.reserve(op_cnt);
-                        for (int i = 0; i < op_cnt; ++i) {
-                            Operations::Change c;
-                            in >> c;
-
-                            Operations::BaseOp *baseOp = nullptr;
-                            switch (c) {
-                                case Operations::PropertyChange: {
-                                    auto op = new Operations::PropertyChangeOp();
-                                    op->read(in);
-                                    baseOp = op;
-                                    break;
-                                }
-                                case Operations::BytesReplace: {
-                                    auto op = new Operations::BytesReplaceOp();
-                                    op->read(in);
-                                    baseOp = op;
-                                    break;
-                                }
-                                case Operations::BytesInsert: {
-                                    auto op = new Operations::BytesInsertRemoveOp(true);
-                                    op->read(in);
-                                    baseOp = op;
-                                    break;
-                                }
-                                case Operations::BytesRemove: {
-                                    auto op = new Operations::BytesInsertRemoveOp(false);
-                                    op->read(in);
-                                    baseOp = op;
-                                    break;
-                                }
-                                case Operations::RowsInsert: {
-                                    auto op = new Operations::RowsInsertOp();
-                                    buf->brief ? op->readBrief(in) : op->read(in);
-                                    baseOp = op;
-                                    break;
-                                }
-                                case Operations::RowsMove: {
-                                    auto op = new Operations::RowsMoveOp();
-                                    op->read(in);
-                                    baseOp = op;
-                                    break;
-                                }
-                                case Operations::RowsRemove: {
-                                    auto op = new Operations::RowsRemoveOp();
-                                    op->read(in);
-                                    baseOp = op;
-                                    break;
-                                }
-                                case Operations::RecordAdd: {
-                                    auto op = new Operations::RecordAddOp();
-                                    buf->brief ? op->readBrief(in) : op->read(in);
-                                    baseOp = op;
-                                    break;
-                                }
-                                case Operations::RecordRemove: {
-                                    auto op = new Operations::RecordRemoveOp();
-                                    op->read(in);
-                                    baseOp = op;
-                                    break;
-                                }
-                                case Operations::ElementAdd: {
-                                    auto op = new Operations::ElementAddOp();
-                                    buf->brief ? op->readBrief(in) : op->read(in);
-                                    baseOp = op;
-                                    break;
-                                }
-                                case Operations::ElementRemove: {
-                                    auto op = new Operations::ElementRemoveOp();
-                                    op->read(in);
-                                    baseOp = op;
-                                    break;
-                                }
-                                case Operations::RootChange: {
-                                    auto op = new Operations::RootChangeOp();
-                                    buf->brief ? op->readBrief(in) : op->read(in);
-                                    baseOp = op;
-                                    break;
-                                }
-                                default:
-                                    break;
-                            }
-                            ops.append(baseOp);
-                        }
-
-                        buf->data.append({ops, attrs});
-                    }
+                    readJournal(file, maxSteps, buf->data, buf->brief);
                 }
 
                 std::unique_lock<std::mutex> lock(buf->mtx);
@@ -736,6 +937,17 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
 
                 break;
             }
+
+            case Tasks::ReadAttributes: {
+                auto task = static_cast<Tasks::ReadAttributesTask *>(cur_task);
+                auto buf = reinterpret_cast<AttributesTaskBuffer *>(task->buf);
+
+                std::unique_lock<std::mutex> lock(buf->mtx);
+                buf->res = fs_getAttributes_do(task->step);
+                lock.unlock();
+                buf->cv.notify_all();
+            }
+
             default:
                 break;
         }
@@ -751,11 +963,13 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
     });
 }
 
-void AceTreeJournalBackendPrivate::pushTask(Tasks::BaseTask *task) {
+void AceTreeJournalBackendPrivate::pushTask(Tasks::BaseTask *task, bool unshift) {
     std::unique_lock<std::mutex> lock(mtx);
-    task_queue.push_back(task);
+    if (unshift)
+        task_queue.push_front(task);
+    else
+        task_queue.push_back(task);
     lock.unlock();
-
     if (!worker) {
         worker = new std::thread(&AceTreeJournalBackendPrivate::workerRoutine, this);
     }
@@ -768,6 +982,14 @@ AceTreeJournalBackend::AceTreeJournalBackend(QObject *parent)
 AceTreeJournalBackend::~AceTreeJournalBackend() {
 }
 
+void AceTreeJournalBackend::setMaxReservedSteps(int steps) {
+    Q_D(AceTreeJournalBackend);
+    if (d->recoverData) {
+        return;
+    }
+    AceTreeMemBackend::setMaxReservedSteps(steps);
+}
+
 int AceTreeJournalBackend::reservedCheckPoints() const {
     Q_D(const AceTreeJournalBackend);
     return d->maxCheckPoints;
@@ -775,6 +997,10 @@ int AceTreeJournalBackend::reservedCheckPoints() const {
 
 void AceTreeJournalBackend::setReservedCheckPoints(int n) {
     Q_D(AceTreeJournalBackend);
+    if (d->recoverData) {
+        return;
+    }
+
     if (d->model) {
         return; // Not allowed to change after setup
     }
@@ -789,12 +1015,114 @@ bool AceTreeJournalBackend::start(const QString &dir) {
         return false;
     }
 
+    if (d->recoverData) {
+        delete d->recoverData;
+        d->recoverData = nullptr;
+    }
     d->dir = dir;
+
     return true;
 }
 
 bool AceTreeJournalBackend::recover(const QString &dir) {
     Q_D(AceTreeJournalBackend);
+
+    QFileInfo info(dir);
+    if (!info.isDir() || !info.isWritable()) {
+        myWarning(__func__) << dir << "is not writable";
+        return false;
+    }
+
+    // Read steps
+    int maxSteps, maxCheckPoints, fsMin, fsMax, fsStep;
+    auto readSteps = [&](QFile &file) {
+        QDataStream in(&file);
+        in >> maxSteps >> maxCheckPoints >> fsMin >> fsMax >> fsStep;
+        if (in.status() != QDataStream::Ok) {
+            return false;
+        }
+        return true;
+    };
+    {
+        QFile file(QString("%1/model_step.dat").arg(dir));
+        if (!file.open(QIODevice::ReadOnly) || !readSteps(file)) {
+            myWarning(__func__) << "read model_step.dat failed";
+            return false;
+        }
+    }
+
+    // Get nearest checkpoint
+    // Suppose maxSteps = 100
+    // 1. 51 <= fsStep <= 150                       -> num = 1
+    // 2. 151 <= fsStep <= 250                      -> num = 2
+    // 3. fsStep < 150, fsMin = 100, fsMax >= 200   -> num = 2
+    // 4. fsStep < 150, fsMin = 100, fsMax < 200    -> num = 1
+    int num = (fsStep + maxSteps / 2 - 1) / maxSteps;
+    if (num <= fsMin / maxSteps) {
+        num++;
+    }
+    if (num > fsMax / maxSteps) {
+        num--;
+    }
+
+    AceTreeItem *root = nullptr;
+    QVector<AceTreeItem *> removedItems;
+    QVector<Tasks::OpsAndAttrs> backwardData;
+    QVector<Tasks::OpsAndAttrs> forwardData;
+    if (num > 0) {
+        // Read checkpoint
+        {
+            QFile file(QString("%1/ckpt_%2.dat").arg(dir, QString::number(num)));
+            if (!file.open(QIODevice::ReadOnly) || !d->readCheckPoint(file, &root, removedItems)) {
+                myWarning(__func__).noquote()
+                    << QString("read ckpt_%1.dat failed").arg(QString::number(num));
+                return false;
+            }
+        }
+
+        // Read backward transactions
+        {
+            QFile file(QString("%1/journal_%2.dat").arg(dir, QString::number(num - 1)));
+            if (!file.open(QIODevice::ReadOnly) ||
+                !d->readJournal(file, maxSteps, backwardData, true)) {
+                myWarning(__func__).noquote()
+                    << QString("read journal_%1.dat failed").arg(QString::number(num - 1));
+                goto failed;
+            }
+        }
+    }
+
+    if (num <= (fsMax - 1) / maxSteps) {
+        // Read forward transactions
+        QFile file(QString("%1/journal_%2.dat").arg(dir, QString::number(num)));
+        if (!file.open(QIODevice::ReadOnly) ||
+            !d->readJournal(file, maxSteps, forwardData, false)) {
+            myWarning(__func__).noquote()
+                << QString("read journal_%1.dat failed").arg(QString::number(num));
+            goto failed;
+        }
+    }
+
+    goto success;
+
+failed:
+    delete root;
+    qDeleteAll(removedItems);
+    return false;
+
+success:
+    auto rdata = new AceTreeJournalBackendPrivate::RecoverData();
+    rdata->fsMin = fsMin;
+    rdata->fsMax = fsMax;
+    rdata->fsStep = fsStep;
+    rdata->currentNum = num;
+    rdata->root = root;
+    rdata->removedItems = removedItems;
+    rdata->backwardData = backwardData;
+    rdata->forwardData = forwardData;
+    d->maxSteps = maxSteps;
+    d->maxCheckPoints = maxCheckPoints;
+    d->recoverData = rdata;
     d->dir = dir;
     return true;
 }
@@ -802,6 +1130,7 @@ bool AceTreeJournalBackend::recover(const QString &dir) {
 void AceTreeJournalBackend::setup(AceTreeModel *model) {
     Q_D(AceTreeJournalBackend);
     d->model = model;
+    d->setup_helper();
 }
 
 int AceTreeJournalBackend::min() const {
@@ -818,7 +1147,7 @@ QHash<QString, QString> AceTreeJournalBackend::attributes(int step) const {
     Q_D(const AceTreeJournalBackend);
     int step2 = step - d->min;
     if (step2 < 0 || step2 >= d->stack.size()) {
-        return d->fs_getAttribute(step);
+        return d->fs_getAttributes(step);
     }
     return d->stack.at(step2).attrs;
 }
@@ -828,6 +1157,16 @@ AceTreeJournalBackend::AceTreeJournalBackend(AceTreeJournalBackendPrivate &d, QO
     d.init();
 }
 
+AceTreeJournalBackendPrivate::RecoverData::~RecoverData() {
+    delete root;
+    qDeleteAll(removedItems);
+    for (const auto &item : qAsConst(backwardData)) {
+        qDeleteAll(item.operations);
+    }
+    for (const auto &item : qAsConst(forwardData)) {
+        qDeleteAll(item.operations);
+    }
+}
 
 AceTreeJournalBackendPrivate::CheckPointTaskBuffer::~CheckPointTaskBuffer() {
     qDeleteAll(removedItems);

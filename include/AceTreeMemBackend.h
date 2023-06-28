@@ -13,7 +13,7 @@ public:
     ~AceTreeMemBackend();
 
     int maxReservedSteps() const;
-    void setMaxReservedSteps(int steps);
+    virtual void setMaxReservedSteps(int steps);
 
 public:
     void setup(AceTreeModel *model) override;

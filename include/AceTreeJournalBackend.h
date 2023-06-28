@@ -12,6 +12,8 @@ public:
     explicit AceTreeJournalBackend(QObject *parent = nullptr);
     ~AceTreeJournalBackend();
 
+    void setMaxReservedSteps(int steps) override;
+
     int reservedCheckPoints() const;
     void setReservedCheckPoints(int n);
 

@@ -20,7 +20,9 @@ static const char *help_display[] = {
     "    new                                Create new item (Return negative temp id)",
     "    del    <id>                        Remove item (Negative id only)",
     "    show   <id>                        Show item",
-    "    temp                               Show all temp items'id",
+    "    rid                                Show root id",
+    "    temp                               Show all temp items' id",
+    "    steps                              Show step information",
     "    undo                               Undo",
     "    redo                               Redo",
     "",
@@ -198,6 +200,12 @@ static void cli() {
             continue;
         }
 
+        // rid
+        if (cmd == "rid") {
+            qDebug() << (model->rootItem() ? model->rootItem()->index() : 0);
+            continue;
+        }
+
         // Temp
         if (cmd == "temp") {
             QStringList ids;
@@ -206,6 +214,14 @@ static void cli() {
                 ids.append(QString::number(it.key()));
             }
             qDebug().noquote() << ids.join(", ");
+            continue;
+        }
+
+        // steps
+        if (cmd == "steps") {
+            qDebug() << "Max:" << model->maxStep();
+            qDebug() << "Min:" << model->minStep();
+            qDebug() << "Current:" << model->currentStep();
             continue;
         }
 
@@ -591,14 +607,15 @@ static void cli() {
 int main(int argc, char *argv[]) {
     QCoreApplication a(argc, argv);
 
+    auto backend = new AceTreeJournalBackend();
     auto dir = QDir(QCoreApplication::applicationDirPath() + "/model");
     if (dir.exists()) {
-        dir.removeRecursively();
+        backend->recover(dir.absolutePath());
+    } else {
+        dir.mkpath(dir.absolutePath());
+        backend->start(dir.absolutePath());
     }
-    dir.mkpath(dir.absolutePath());
 
-    auto backend = new AceTreeJournalBackend();
-    backend->start(dir.absolutePath());
     model = new AceTreeModel(backend);
 
     std::thread t(cli);

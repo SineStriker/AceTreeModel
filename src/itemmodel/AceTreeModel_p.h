@@ -35,6 +35,9 @@ public:
 
     void setRootItem_helper(AceTreeItem *item);
 
+    // For backend to set initial state
+    void setRootItem_fake(AceTreeItem *item);
+
     int addIndex(AceTreeItem *item, size_t idx = 0);
     void removeIndex(size_t index);
 

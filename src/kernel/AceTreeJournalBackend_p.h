@@ -21,13 +21,37 @@ public:
 
     void init();
 
+    void setup_helper();
+
     int maxCheckPoints;
     QString dir;
 
     int fsMin;
     int fsMax;
 
-    QHash<QString, QString> fs_getAttribute(int step) const;
+    struct RecoverData {
+        int fsMin;
+        int fsMax;
+        int fsStep;
+        int currentNum;
+        AceTreeItem *root;
+        QVector<AceTreeItem *> removedItems;
+        QVector<Tasks::OpsAndAttrs> backwardData;
+        QVector<Tasks::OpsAndAttrs> forwardData;
+
+        ~RecoverData();
+    };
+    RecoverData *recoverData;
+
+    QHash<QString, QString> fs_getAttributes(int step) const;
+    QHash<QString, QString> fs_getAttributes_do(int step) const;
+
+    static bool readJournal(QFile &file, int maxSteps, QVector<Tasks::OpsAndAttrs> &res,
+                            bool brief);
+    static bool readCheckPoint(QFile &file, AceTreeItem **rootRef,
+                               QVector<AceTreeItem *> &removedItemsRef);
+
+    void updateStackSize();
 
     void afterModelInfoSet() override;
     void afterCurrentChange() override;
@@ -37,11 +61,13 @@ public:
     void abortBackwardReadTask();
     void abortForwardReadTask();
 
-    void updateStackSize();
+    void extractBackwardJournal(QVector<AceTreeItem *> &removedItems,
+                                QVector<Tasks::OpsAndAttrs> &data);
+    void extractForwardJournal(QVector<Tasks::OpsAndAttrs> &data);
 
     // Worker routine
     void workerRoutine();
-    void pushTask(Tasks::BaseTask *task);
+    void pushTask(Tasks::BaseTask *task, bool unshift = false);
 
     std::thread *worker;
     std::mutex mtx;
@@ -60,6 +86,15 @@ public:
     };
     CheckPointTaskBuffer *backward_buf;
     CheckPointTaskBuffer *forward_buf;
+
+    struct AttributesTaskBuffer {
+        std::mutex mtx;
+        std::condition_variable cv;
+        QHash<QString, QString> res;
+        volatile bool finished;
+        AttributesTaskBuffer() : finished(false) {
+        }
+    };
 
     QFile *stepFile;
     QFile *infoFile;

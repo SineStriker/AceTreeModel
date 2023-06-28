@@ -4,11 +4,12 @@
 #include "AceTreeModel_p.h"
 
 #include <QDataStream>
+#include <QDebug>
 #include <QtEndian>
 
 // #define ENABLE_DEBUG_COUNT
 
-#define myWarning(func) (qWarning().nospace() << "AceTreeItem::" << (func) << "(): ").maybeSpace()
+#define myWarning(func) (qWarning().nospace() << "AceTreeItem::" << (func) << "():").space()
 
 static const char SIGN_TREE_ITEM[] = "item";
 
@@ -55,8 +56,6 @@ AceTreeItemPrivate::~AceTreeItemPrivate() {
             qFatal("AceTreeItem::~AceTreeItem(): deleting a managed item may cause crash!!!");
         }
 
-        qDebug() << "Item remove" << m_index;
-
         auto d = model->d_func();
         if (!d->is_destruct)
             model->d_func()->removeIndex(m_index);
@@ -92,7 +91,7 @@ void AceTreeItemPrivate::init() {
 bool AceTreeItemPrivate::testModifiable(const char *func) const {
     Q_Q(const AceTreeItem);
 
-    if (!model && m_index > 0) {
+    if (m_managed) {
         myWarning(func) << "the item is now obsolete" << q;
         return false;
     }

@@ -12,7 +12,7 @@
 
 // #define ENABLE_DEBUG_COUNT
 
-#define myWarning(func) (qWarning().nospace() << "AceTreeModel::" << (func) << "(): ").maybeSpace()
+#define myWarning(func) (qWarning().nospace() << "AceTreeModel::" << (func) << "():").space()
 
 static bool dummy;
 bool *AceTreeModelPrivate::InterruptGuard::shared_null = &dummy;
@@ -55,6 +55,15 @@ void AceTreeModelPrivate::setRootItem_helper(AceTreeItem *item) {
     // Propagate signal
     AceTreeRootEvent e2(AceTreeEvent::RootChange, item, org);
     event_helper(&e2);
+}
+
+void AceTreeModelPrivate::setRootItem_fake(AceTreeItem *item) {
+    if (item) {
+        propagate_model(item);
+        if (!item->d_func()->m_managed)
+            item->d_func()->changeManaged(true);
+    }
+    rootItem = item;
 }
 
 int AceTreeModelPrivate::addIndex(AceTreeItem *item, size_t idx) {

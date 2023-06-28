@@ -13,6 +13,7 @@ namespace Tasks {
         ReadCheckPoint,
         WriteCheckPoint,
         UpdateModelInfo,
+        ReadAttributes,
     };
     Q_ENUM_NS(TaskType);
 
@@ -47,6 +48,7 @@ namespace Tasks {
         int fsStep;
     };
 
+    // Writing checkpoint with root item and all items removed during last period
     struct WriteCkptTask : public BaseTask {
         WriteCkptTask() : BaseTask(WriteCheckPoint), num(0), root(nullptr) {
         }
@@ -72,6 +74,14 @@ namespace Tasks {
         ~UpdateModelInfoTask();
 
         QVariantHash info;
+    };
+
+    struct ReadAttributesTask : public BaseTask {
+        ReadAttributesTask() : BaseTask(ReadAttributes), step(0), buf(nullptr) {
+        }
+
+        int step;
+        void *buf;
     };
 
 } // namespace Tasks
