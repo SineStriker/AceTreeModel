@@ -53,7 +53,7 @@ namespace Operations {
         children.reserve(size);
         in.skipRawData(sizeof(size_t) * size + sizeof(qint64));
         for (int i = 0; i < size; ++i) {
-            auto item = AceTreeItem::read(in);
+            auto item = AceTreeItemPrivate::read_helper(in, false);
             if (!item) {
                 in.setStatus(QDataStream::ReadCorruptData);
                 qDeleteAll(children);
@@ -148,7 +148,7 @@ namespace Operations {
     bool RecordAddOp::read(QDataStream &in) {
         in >> parent >> seq;
         in.skipRawData(sizeof(size_t) + sizeof(qint64));
-        auto item = AceTreeItem::read(in);
+        auto item = AceTreeItemPrivate::read_helper(in, false);
         if (!item) {
             in.setStatus(QDataStream::ReadCorruptData);
             return false;
@@ -164,7 +164,7 @@ namespace Operations {
         auto &dev = *out.device();
         auto pos = dev.pos();
 
-        child->write(out);
+        AceTreeItemPrivate::get(child)->write_helper(out, false);
 
         auto pos1 = dev.pos();
         dev.seek(pos - sizeof(qint64));
@@ -202,7 +202,7 @@ namespace Operations {
         in >> parent;
         AceTreePrivate::operator>>(in, key);
         in.skipRawData(sizeof(size_t) + sizeof(qint64));
-        auto item = AceTreeItem::read(in);
+        auto item = AceTreeItemPrivate::read_helper(in, false);
         if (!item) {
             in.setStatus(QDataStream::ReadCorruptData);
             return false;
@@ -220,7 +220,7 @@ namespace Operations {
         auto &dev = *out.device();
         auto pos = dev.pos();
 
-        child->write(out);
+        AceTreeItemPrivate::get(child)->write_helper(out, false);
 
         auto pos1 = dev.pos();
         dev.seek(pos - sizeof(qint64));
@@ -264,7 +264,7 @@ namespace Operations {
         size_t id;
         in >> oldRoot >> id;
         if (id != 0) {
-            auto item = AceTreeItem::read(in);
+            auto item = AceTreeItemPrivate::read_helper(in, false);
             if (!item) {
                 in.setStatus(QDataStream::ReadCorruptData);
                 return false;
@@ -283,7 +283,7 @@ namespace Operations {
             out << newRoot->index();
 
             // Write new root
-            newRoot->write(out);
+            AceTreeItemPrivate::get(newRoot)->write_helper(out, false);
         } else {
             out << size_t(0);
         }

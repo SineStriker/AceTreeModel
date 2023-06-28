@@ -893,7 +893,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                     out << task->root->index();
 
                     // Write root data
-                    task->root->write(out);
+                    AceTreeItemPrivate::get(task->root)->write_helper(out, false);
                 } else {
                     // Write 0
                     out << size_t(0);
