@@ -30,6 +30,8 @@ public:
     void redo() override;
     void commit(const QList<AceTreeEvent *> &events, const QHash<QString, QString> &attrs) override;
 
+    void reset() override;
+
 protected:
     AceTreeMemBackend(AceTreeMemBackendPrivate &d, QObject *parent = nullptr);
 

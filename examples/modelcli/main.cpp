@@ -1,6 +1,7 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
+#include <QStack>
 #include <QTextStream>
 
 #include <thread>
@@ -26,6 +27,7 @@ static const char *help_display[] = {
     "    attr                               Show step attributes",
     "    undo                               Undo",
     "    redo                               Redo",
+    "    reset                              Reset",
     "",
     "    set    <id> <key> <value>          Set property",
     "    get    <id> <key>                  Get property",
@@ -88,6 +90,44 @@ static QStringList parseCommand(const QString &command) {
 }
 
 
+static void showItem(AceTreeItem *item, int indent, const char *prefix = nullptr) {
+    std::string indent_str(indent, ' ');
+    if (prefix) {
+        qDebug().noquote().nospace() << indent_str.c_str() << prefix;
+    }
+    qDebug().noquote().nospace() << indent_str.c_str() << "id: " << item->index();
+    qDebug().noquote().nospace() << indent_str.c_str() << "properties: ";
+    auto map = item->propertyMap();
+    for (auto it = map.begin(); it != map.end(); ++it) {
+        qDebug().nospace().noquote()
+            << indent_str.c_str() << "  " << it.key() << ": " << it.value();
+    }
+
+    indent += 2;
+    qDebug().noquote().nospace() << indent_str.c_str() << "rows: ";
+    auto rows = item->rows();
+    int i = 0;
+    for (const auto &child : qAsConst(rows)) {
+        showItem(child, indent,
+                 QString("index: %1").arg(QString::number(i++)).toStdString().c_str());
+        qDebug().noquote().nospace() << indent_str.c_str() << "  --------";
+    }
+    qDebug().noquote().nospace() << indent_str.c_str() << "records: ";
+    auto recs = item->recordMap();
+    for (auto it = recs.begin(); it != recs.end(); ++it) {
+        showItem(it.value(), indent,
+                 QString("seq: %1").arg(QString::number(it.key())).toStdString().c_str());
+        qDebug().noquote().nospace() << indent_str.c_str() << "  --------";
+    }
+    qDebug().noquote().nospace() << indent_str.c_str() << "elements: ";
+    auto eles = item->elementMap();
+    for (auto it = eles.begin(); it != eles.end(); ++it) {
+        showItem(it.value(), indent, QString("key: %1").arg(it.key()).toStdString().c_str());
+        qDebug().noquote().nospace() << indent_str.c_str() << "  --------";
+    }
+}
+
+
 static void cli() {
     QTextStream inputStream(stdin);
     QString line;
@@ -103,6 +143,15 @@ static void cli() {
             item = model->itemFromIndex(id);
         }
         return item;
+    };
+
+    auto filterItems = [&tempItems]() {
+        for (auto it = tempItems.begin(); it != tempItems.end();) {
+            if (it.value()->index() > 0)
+                it = tempItems.erase(it);
+            else
+                ++it;
+        }
     };
 
     do {
@@ -185,20 +234,7 @@ static void cli() {
             auto id = list.at(1).toInt();
             GET_ITEM(id);
 
-            // Show item
-            qDebug() << "id:"
-                     << (item->index() == 0 ? item->dynamicData("_temp_id").toInt()
-                                            : int(item->index()));
-            qDebug() << "managed:" << item->isManaged();
-            qDebug() << "properties:";
-            auto map = item->propertyMap();
-            for (auto it = map.begin(); it != map.end(); ++it) {
-                qDebug().nospace().noquote() << "    " << it.key() << ": " << it.value();
-            }
-            qDebug() << "bytes:" << item->bytes();
-            qDebug() << "rows:" << item->rowCount();
-            qDebug() << "recs:" << item->recordCount();
-            qDebug() << "eles:" << item->elementCount();
+            showItem(item, 0);
             continue;
         }
 
@@ -247,16 +283,26 @@ static void cli() {
             continue;
         }
 
+        // Redo
+        if (cmd == "reset") {
+            model->reset();
+            continue;
+        }
+
         auto tx = [](bool tx, const std::function<bool()> &func) {
             if (tx)
                 model->beginTransaction();
-            if (func()) {
+
+            bool res = func();
+            if (res) {
                 qDebug() << "OK";
             } else {
                 qDebug() << "Failed";
             }
             if (tx)
                 model->commitTransaction({{"num", QString::number(model->maxStep())}});
+
+            return res;
         };
 
         // Set
@@ -365,7 +411,9 @@ static void cli() {
             if (children.isEmpty())
                 continue;
 
-            tx(item->index() > 0, [&]() { return item->insertRows(index, children); });
+            if (tx(item->index() > 0, [&]() { return item->insertRows(index, children); })) {
+                filterItems();
+            }
             continue;
         }
 
@@ -379,7 +427,9 @@ static void cli() {
             if (children.isEmpty())
                 continue;
 
-            tx(item->index() > 0, [&]() { return item->appendRows(children); });
+            if (tx(item->index() > 0, [&]() { return item->appendRows(children); })) {
+                filterItems();
+            }
             continue;
         }
 
@@ -393,7 +443,9 @@ static void cli() {
             if (children.isEmpty())
                 continue;
 
-            tx(item->index() > 0, [&]() { return item->prependRows(children); });
+            if (tx(item->index() > 0, [&]() { return item->prependRows(children); })) {
+                filterItems();
+            }
             continue;
         }
 
@@ -471,7 +523,12 @@ static void cli() {
 
             if (item->index() > 0)
                 model->beginTransaction();
-            qDebug() << item->addRecord(child);
+
+            auto seq = item->addRecord(child);
+            if (seq > 0) {
+                filterItems();
+            }
+            qDebug() << seq;
 
             if (item->index() > 0)
                 model->commitTransaction();
@@ -547,7 +604,9 @@ static void cli() {
                 continue;
             }
 
-            tx(item->index() > 0, [&]() { return item->addElement(key, child); });
+            if (tx(item->index() > 0, [&]() { return item->addElement(key, child); })) {
+                filterItems();
+            }
             continue;
         }
 
@@ -605,12 +664,13 @@ static void cli() {
             auto id = list.at(1).toInt();
             GET_ITEM(id);
 
-            tx(true, [&]() { return model->setRootItem(item); });
+            if (tx(true, [&]() { return model->setRootItem(item); })) {
+                filterItems();
+            }
             continue;
         }
 
         qDebug() << "Unknown command:" << cmd;
-
     } while (!inputStream.atEnd());
 }
 

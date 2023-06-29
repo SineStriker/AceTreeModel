@@ -91,11 +91,14 @@ public:
 
 namespace AceTreePrivate {
 
-//    QDataStream &operator>>(QDataStream &in, size_t &i);
-//    QDataStream &operator<<(QDataStream &out, size_t i);
+    // QDataStream &operator>>(QDataStream &in, size_t &i);
+    // QDataStream &operator<<(QDataStream &out, size_t i);
 
     QDataStream &operator>>(QDataStream &in, QString &s);
     QDataStream &operator<<(QDataStream &out, const QString &s);
+
+    QDataStream &operator>>(QDataStream &stream, QVariantHash &s);
+    QDataStream &operator<<(QDataStream &stream, const QVariantHash &s);
 
 } // namespace AceTreePrivate
 

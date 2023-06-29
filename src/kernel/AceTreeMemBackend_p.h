@@ -32,6 +32,7 @@ public:
     virtual void afterCurrentChange();
     virtual void afterCommit(const QList<AceTreeEvent *> &events,
                              const QHash<QString, QString> &attributes);
+    virtual void afterReset();
 };
 
 #endif // ACETREEMEMBACKEND_P_H

@@ -65,6 +65,7 @@ public:
 signals:
     void modelChanged(AceTreeEvent *e);
     void stepChanged(int step);
+    void aboutToReset();
 
 protected:
     AceTreeModel(AceTreeModelPrivate &d, QObject *parent = nullptr);

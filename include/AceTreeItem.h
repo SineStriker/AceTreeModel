@@ -120,7 +120,8 @@ public:
     QString elementKeyOf(AceTreeItem *item) const;
     QStringList elementKeys() const;
     QList<AceTreeItem *> elements() const;
-    QHash<QString, AceTreeItem *> elementMap() const;
+    QHash<QString, AceTreeItem *> elementHash() const;
+    QMap<QString, AceTreeItem *> elementMap() const;
     int elementCount() const;
 
     static AceTreeItem *read(QDataStream &in);

@@ -190,6 +190,15 @@ bool AceTreeModel::setRootItem(AceTreeItem *item) {
 }
 
 void AceTreeModel::reset() {
+    Q_D(AceTreeModel);
+    if (d->m_state != Idle) {
+        myWarning(__func__) << "A transaction is executing";
+        return;
+    }
+
+    emit aboutToReset();
+
+    d->backend->reset();
 }
 
 AceTreeModel::State AceTreeModel::state() const {

@@ -418,9 +418,10 @@ namespace Operations {
     AceTreeEvent *fromOp(BaseOp *baseOp, AceTreeModel *model, bool brief) {
         AceTreeEvent *res = nullptr;
 
-        auto setupItem = [model](AceTreeItem *item) {
+        auto model_p = AceTreeModelPrivate::get(model);
+        auto setupItem = [model_p](AceTreeItem *item) {
             // Add to model
-            AceTreeModelPrivate::get(model)->addManagedItem_backend(item);
+            model_p->addManagedItem_backend(item);
         };
 
         switch (baseOp->c) {

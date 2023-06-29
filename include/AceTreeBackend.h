@@ -28,6 +28,8 @@ public:
     virtual void commit(const QList<AceTreeEvent *> &events,
                         const QHash<QString, QString> &attrs) = 0;
 
+    virtual void reset() = 0;
+
     inline bool canUndo() const;
     inline bool canRedo() const;
 };

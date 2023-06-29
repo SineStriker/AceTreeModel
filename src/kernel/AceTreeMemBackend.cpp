@@ -2,6 +2,7 @@
 #include "AceTreeMemBackend_p.h"
 
 #include "AceTreeItem_p.h"
+#include "AceTreeModel_p.h"
 
 AceTreeMemBackendPrivate::AceTreeMemBackendPrivate() {
     maxSteps = 4;
@@ -51,6 +52,13 @@ void AceTreeMemBackendPrivate::afterCommit(const QList<AceTreeEvent *> &events,
         min += maxSteps;
         current -= maxSteps;
     }
+}
+
+void AceTreeMemBackendPrivate::afterReset() {
+    // Remove all events
+    removeEvents(0, stack.size());
+    min = 0;
+    current = 0;
 }
 
 AceTreeMemBackend::AceTreeMemBackend(QObject *parent)
@@ -162,6 +170,19 @@ void AceTreeMemBackend::commit(const QList<AceTreeEvent *> &events,
     d->current++;
 
     d->afterCommit(events, attrs);
+}
+
+void AceTreeMemBackend::reset() {
+    Q_D(AceTreeMemBackend);
+
+    auto model_d = AceTreeModelPrivate::get(d->model);
+    auto root = model_d->rootItem;
+    if (root) {
+        AceTreeItemPrivate::get(root)->changeManaged(true);
+        model_d->rootItem = nullptr;
+    }
+
+    d->afterReset();
 }
 
 AceTreeMemBackend::AceTreeMemBackend(AceTreeMemBackendPrivate &d, QObject *parent)

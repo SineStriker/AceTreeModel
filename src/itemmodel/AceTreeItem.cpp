@@ -7,7 +7,7 @@
 #include <QDebug>
 #include <QtEndian>
 
-#define ENABLE_DEBUG_COUNT
+// #define ENABLE_DEBUG_COUNT
 
 #define myWarning(func) (qWarning().nospace() << "AceTreeItem::" << (func) << "():").space()
 
@@ -460,7 +460,7 @@ AceTreeItem *AceTreeItemPrivate::read_helper(QDataStream &in, bool user) {
     in >> (user ? tmp : d->m_index);
 
     // Read properties
-    in >> d->properties;
+    AceTreePrivate::operator>>(in, d->properties);
     if (in.status() != QDataStream::Ok) {
         myWarning(__func__) << "read properties failed";
         goto abort;
@@ -545,7 +545,7 @@ void AceTreeItemPrivate::write_helper(QDataStream &out, bool user) const {
     out << (user ? size_t(0) : d->m_index);
 
     // Write properties
-    out << d->properties;
+    AceTreePrivate::operator<<(out, d->properties);
 
     // Write byte array
     out << d->byteArray;
@@ -1024,6 +1024,15 @@ QList<int> AceTreeItem::records() const {
     return seqs;
 }
 
+QMap<int, AceTreeItem *> AceTreeItem::recordMap() const {
+    Q_D(const AceTreeItem);
+    QMap<int, AceTreeItem *> res;
+    for (auto it = d->records.begin(); it != d->records.end(); ++it) {
+        res.insert(it.key(), it.value());
+    }
+    return res;
+}
+
 int AceTreeItem::recordCount() const {
     Q_D(const AceTreeItem);
     return d->records.size();
@@ -1113,9 +1122,18 @@ QList<AceTreeItem *> AceTreeItem::elements() const {
     return d->set.values();
 }
 
-QHash<QString, AceTreeItem *> AceTreeItem::elementMap() const {
+QHash<QString, AceTreeItem *> AceTreeItem::elementHash() const {
     Q_D(const AceTreeItem);
     return d->set;
+}
+
+QMap<QString, AceTreeItem *> AceTreeItem::elementMap() const {
+    Q_D(const AceTreeItem);
+    QMap<QString, AceTreeItem *> res;
+    for (auto it = d->set.begin(); it != d->set.end(); ++it) {
+        res.insert(it.key(), it.value());
+    }
+    return res;
 }
 
 int AceTreeItem::elementCount() const {
@@ -1213,6 +1231,37 @@ namespace AceTreePrivate {
 
     QDataStream &operator<<(QDataStream &out, const QString &s) {
         return out << s.toUtf8();
+    }
+
+    QDataStream &operator>>(QDataStream &in, QVariantHash &s) {
+        int size;
+        in >> size;
+        s.reserve(size);
+        for (int i = 0; i < size; ++i) {
+            QString key;
+            AceTreePrivate::operator>>(in, key);
+            if (in.status() != QDataStream::Ok) {
+                break;
+            }
+            QVariant val;
+            in >> val;
+            if (in.status() != QDataStream::Ok) {
+                break;
+            }
+            s.insert(key, val);
+        }
+        return in;
+    }
+
+    QDataStream &operator<<(QDataStream &out, const QVariantHash &s) {
+        out << s.size();
+        for (auto it = s.begin(); it != s.end(); ++it) {
+            AceTreePrivate::operator<<(out, it.key());
+            if (it->type() == QVariant::String) {
+            }
+            out << it.value();
+        }
+        return out;
     }
 
 } // namespace AceTreePrivate

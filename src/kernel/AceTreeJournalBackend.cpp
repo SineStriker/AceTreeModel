@@ -59,13 +59,18 @@ void AceTreeJournalBackendPrivate::init() {
 
 void AceTreeJournalBackendPrivate::setup_helper() {
     if (!recoverData) {
+        QFile file(QString("%1/model_step.dat").arg(dir));
+        file.open(QIODevice::WriteOnly);
+        QDataStream out(&file);
+
+        // Write steps
+        out << maxSteps << maxCheckPoints << fsMin2 << fsMax2 << fsStep2;
         return;
     }
 
     fsMin2 = fsMin = recoverData->fsMin;
     fsMax2 = fsMax = recoverData->fsMax;
     fsStep2 = recoverData->fsStep;
-    modelInfo = recoverData->modelInfo;
 
     if (recoverData->root) {
         AceTreeModelPrivate::get(model)->setRootItem_backend(recoverData->root);
@@ -137,16 +142,16 @@ QHash<QString, QString> AceTreeJournalBackendPrivate::fs_getAttributes(int step)
 QHash<QString, QString> AceTreeJournalBackendPrivate::fs_getAttributes_do(int step) const {
     int num = (step - 1) / maxSteps;
 
-    QFile file;
+    QScopedPointer<QFile> file;
     QDataStream in;
-    if (num == txNum) {
+    if (num == txNum && txFile && txFile->isOpen()) {
         in.setDevice(txFile);
     } else {
-        file.setFileName(QString("%1/journal_%2.dat").arg(dir, QString::number(num)));
-        if (!file.open(QIODevice::ReadOnly)) {
+        file.reset(new QFile(QString("%1/journal_%2.dat").arg(dir, QString::number(num))));
+        if (!file->open(QIODevice::ReadOnly)) {
             return {};
         }
-        in.setDevice(&file);
+        in.setDevice(file.data());
     }
 
     qDebug().noquote().nospace() << "[Journal] Read attributes at " << step << " in "
@@ -547,6 +552,24 @@ void AceTreeJournalBackendPrivate::afterCommit(const QList<AceTreeEvent *> &even
     }
 
     updateStackSize();
+}
+
+void AceTreeJournalBackendPrivate::afterReset() {
+    AceTreeMemBackendPrivate::afterReset();
+
+    fsMin = 0;
+    fsMax = 0;
+
+    if (writeCkptTask) {
+        delete writeCkptTask;
+        writeCkptTask = nullptr;
+    }
+
+    abortForwardReadTask();
+    abortBackwardReadTask();
+
+    auto task = new Tasks::BaseTask(Tasks::Reset);
+    pushTask(task);
 }
 
 void AceTreeJournalBackendPrivate::abortBackwardReadTask() {
@@ -1008,6 +1031,49 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                 buf->cv.notify_all();
             }
 
+            case Tasks::Reset: {
+                // Remove all files
+                infoFile.remove();
+
+                int oldMin = fsMin2;
+                int oldMax = fsMax2;
+
+                fsMin2 = 0;
+                fsMax2 = 0;
+                fsStep2 = 0;
+                txNum = -1;
+
+                // Write steps
+                {
+                    auto &file = stepFile;
+                    bool exists = file.exists();
+                    if (!file.isOpen()) {
+                        file.open(QIODevice::ReadWrite | QIODevice::Append);
+                    }
+                    QDataStream out(&file);
+                    if (!exists) {
+                        // Write initial values
+                        out << maxSteps << maxCheckPoints;
+                    } else {
+                        file.seek(8);
+                    }
+                    out << fsMin2 << fsMax2 << fsStep2;
+                    file.flush();
+                }
+
+                // Truncate
+                {
+                    if (this->txFile) {
+                        delete this->txFile;
+                    }
+                    int oldMinNum = oldMin / maxSteps;
+                    int oldMaxNum = (oldMax - 1) / maxSteps;
+                    for (int i = oldMaxNum; i >= oldMinNum; --i) {
+                        truncateJournals(dir, i);
+                    }
+                }
+            }
+
             default:
                 break;
         }
@@ -1173,6 +1239,23 @@ bool AceTreeJournalBackend::recover(const QString &dir) {
         }
     }
 
+    {
+        QFile file(QString("%1/model_info.dat").arg(dir));
+        if (file.open(QIODevice::ReadOnly)) {
+            QDataStream in(&file);
+            QVariantHash modelInfo;
+            in >> modelInfo;
+            if (in.status() == QDataStream::Ok) {
+                d->modelInfo = modelInfo;
+            }
+        }
+    }
+
+    if (fsMax == 0) {
+        d->dir = dir;
+        return true;
+    }
+
     // Get nearest checkpoint
     // Suppose maxSteps = 100
     // 1. 51 <= fsStep <= 150                         -> num = 1
@@ -1233,17 +1316,6 @@ bool AceTreeJournalBackend::recover(const QString &dir) {
         }
     }
 
-    {
-        QFile file(QString("%1/model_info.dat").arg(dir));
-        if (file.open(QIODevice::ReadOnly)) {
-            QDataStream in(&file);
-            in >> modelInfo;
-            if (in.status() != QDataStream::Ok) {
-                modelInfo.clear();
-            }
-        }
-    }
-
     goto success;
 
 failed:
@@ -1261,7 +1333,6 @@ success:
     rdata->removedItems = removedItems;
     rdata->backwardData = backwardData;
     rdata->forwardData = forwardData;
-    rdata->modelInfo = modelInfo;
     d->maxSteps = maxSteps;
     d->maxCheckPoints = maxCheckPoints;
     d->recoverData = rdata;

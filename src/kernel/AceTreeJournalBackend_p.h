@@ -38,7 +38,6 @@ public:
         QVector<AceTreeItem *> removedItems;
         QVector<Tasks::OpsAndAttrs> backwardData;
         QVector<Tasks::OpsAndAttrs> forwardData;
-        QVariantHash modelInfo;
 
         ~RecoverData();
     };
@@ -63,6 +62,7 @@ public:
     void afterCurrentChange() override;
     void afterCommit(const QList<AceTreeEvent *> &events,
                      const QHash<QString, QString> &attributes) override;
+    void afterReset() override;
 
     void abortBackwardReadTask();
     void abortForwardReadTask();

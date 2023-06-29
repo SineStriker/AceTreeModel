@@ -14,6 +14,7 @@ namespace Tasks {
         WriteCheckPoint,
         UpdateModelInfo,
         ReadAttributes,
+        Reset,
     };
     Q_ENUM_NS(TaskType);
 
