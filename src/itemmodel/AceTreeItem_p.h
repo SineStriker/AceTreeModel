@@ -6,6 +6,8 @@
 
 #include "QMChronSet.h"
 
+class AceTreeEntity;
+
 class AceTreeItemPrivate {
     Q_DECLARE_PUBLIC(AceTreeItem)
 public:
@@ -39,13 +41,14 @@ public:
     QHash<AceTreeItem *, int> recordIndexes;
     QHash<AceTreeItem *, QString> setIndexes;
 
+    // For AceTreeEntity cache
+    AceTreeEntity *entity;
+
     bool testModifiable(const char *func) const;
     bool testInsertable(const char *func, const AceTreeItem *item) const;
 
-    void sendEvent(AceTreeEvent *e);
+    void sendEvent(AceTreeEvent *event);
     void changeManaged(bool managed);
-
-    //    static void execute(AceTreeEvent *e, bool undo);
 
     void setProperty_helper(const QString &key, const QVariant &value);
     void replaceBytes_helper(int index, const QByteArray &bytes);
@@ -59,24 +62,32 @@ public:
     void addElement_helper(const QString &key, AceTreeItem *item);
     void removeElement_helper(const QString &key);
 
+public:
     static AceTreeItem *read_helper(QDataStream &in, bool user);
     void write_helper(QDataStream &out, bool user) const;
     AceTreeItem *clone_helper(bool user) const;
 
-    static AceTreeItemPrivate *get(AceTreeItem *item);
+    static inline AceTreeItemPrivate *get(AceTreeItem *item) {
+        return item->d_func();
+    }
 
-    static inline size_t getId(AceTreeItem *item) {
+    static inline const AceTreeItemPrivate *get(const AceTreeItem *item) {
+        return item->d_func();
+    }
+
+    static inline size_t getId(const AceTreeItem *item) {
         return item ? item->index() : 0;
     }
 
     static void propagate(AceTreeItem *item, const std::function<void(AceTreeItem *)> &func);
+
     static void forceDeleteItem(AceTreeItem *item);
 
-    static inline bool executeEvent(AceTreeEvent *e, bool undo) {
-        return e->execute(undo);
+    static inline bool executeEvent(AceTreeEvent *event, bool undo) {
+        return event->execute(undo);
     }
-    static inline void cleanEvent(AceTreeEvent *e) {
-        e->clean();
+    static inline void cleanEvent(AceTreeEvent *event) {
+        event->clean();
     }
 };
 

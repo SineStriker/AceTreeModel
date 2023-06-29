@@ -116,8 +116,9 @@ public:
     bool addElement(const QString &key, AceTreeItem *item);
     bool removeElement(const QString &key);
     bool removeElement(AceTreeItem *item);
-    AceTreeItem *element(const QString &key);
+    AceTreeItem *element(const QString &key) const;
     QString elementKeyOf(AceTreeItem *item) const;
+    bool containsElement(AceTreeItem *item) const;
     QStringList elementKeys() const;
     QList<AceTreeItem *> elements() const;
     QHash<QString, AceTreeItem *> elementHash() const;
@@ -250,7 +251,7 @@ public:
     AceTreeItem *treeItem() const;
 
 protected:
-    virtual void event(AceTreeEvent *e);
+    virtual void event(AceTreeEvent *event);
 
 private:
     AceTreeItemSubscriberPrivate *d;

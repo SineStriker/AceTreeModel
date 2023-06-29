@@ -45,7 +45,13 @@ public:
     void event_helper(AceTreeEvent *e);
     void propagate_model(AceTreeItem *item);
 
-    static AceTreeModelPrivate *get(AceTreeModel *model);
+    static inline AceTreeModelPrivate *get(AceTreeModel *model) {
+        return model->d_func();
+    }
+
+    static inline const AceTreeModelPrivate *get(const AceTreeModel *model) {
+        return model->d_func();
+    }
 
     struct InterruptGuard {
         inline InterruptGuard(AceTreeItem *item)

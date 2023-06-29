@@ -41,6 +41,8 @@ AceTreeItemPrivate::AceTreeItemPrivate() {
     model = nullptr;
     m_index = 0;
     maxRecordSeq = 0;
+
+    entity = nullptr;
 }
 
 AceTreeItemPrivate::~AceTreeItemPrivate() {
@@ -125,11 +127,11 @@ bool AceTreeItemPrivate::testInsertable(const char *func, const AceTreeItem *ite
     return true;
 }
 
-void AceTreeItemPrivate::sendEvent(AceTreeEvent *e) {
+void AceTreeItemPrivate::sendEvent(AceTreeEvent *event) {
     for (const auto &sub : qAsConst(subscribers))
-        sub->event(e);
+        sub->event(event);
     if (model)
-        model->d_func()->event_helper(e);
+        model->d_func()->event_helper(event);
 }
 
 void AceTreeItemPrivate::changeManaged(bool managed) {
@@ -138,51 +140,6 @@ void AceTreeItemPrivate::changeManaged(bool managed) {
         item->d_func()->m_managed = managed; //
     });
 }
-
-// void AceTreeItemPrivate::execute(AceTreeEvent *e, bool undo) {
-//     switch (e->type()) {
-//         case AceTreeEvent::PropertyChange: {
-//             auto e1 = static_cast<AceTreeValueEvent *>(e);
-//             auto item = e1->parent();
-//             item->d_func()->setProperty_helper(e1->key(), undo ? e1->oldValue() : e1->value());
-//             break;
-//         }
-//         case AceTreeEvent::BytesReplace: {
-//             auto e1 = static_cast<AceTreeBytesEvent *>(e);
-//             break;
-//         }
-//         case AceTreeEvent::BytesInsert:
-//         case AceTreeEvent::BytesRemove: {
-//             auto e1 = static_cast<AceTreeBytesEvent *>(e);
-//             break;
-//         }
-//         case AceTreeEvent::RowsMove: {
-//             auto e1 = static_cast<AceTreeRowsMoveEvent *>(e);
-//             break;
-//         }
-//         case AceTreeEvent::RowsInsert:
-//         case AceTreeEvent::RowsRemove: {
-//             auto e1 = static_cast<AceTreeRowsInsDelEvent *>(e);
-//             break;
-//         }
-//         case AceTreeEvent::RecordAdd:
-//         case AceTreeEvent::RecordRemove: {
-//             auto e1 = static_cast<AceTreeRecordEvent *>(e);
-//             break;
-//         }
-//         case AceTreeEvent::ElementAdd:
-//         case AceTreeEvent::ElementRemove: {
-//             auto e1 = static_cast<AceTreeElementEvent *>(e);
-//             break;
-//         }
-//         case AceTreeEvent::RootChange: {
-//             auto e1 = static_cast<AceTreeRootEvent *>(e);
-//             break;
-//         }
-//         default:
-//             break;
-//     }
-// }
 
 void AceTreeItemPrivate::setProperty_helper(const QString &key, const QVariant &value) {
     Q_Q(AceTreeItem);
@@ -484,7 +441,9 @@ AceTreeItem *AceTreeItemPrivate::read_helper(QDataStream &in, bool user) {
             myWarning(__func__) << "read vector item failed";
             goto abort;
         }
-        child->d_func()->parent = item;
+        auto d = child->d_func();
+        d->parent = item;
+        d->status = AceTreeItem::Row;
         d->vector.append(child);
     }
 
@@ -500,7 +459,10 @@ AceTreeItem *AceTreeItemPrivate::read_helper(QDataStream &in, bool user) {
             myWarning(__func__) << "read record item failed";
             goto abort;
         }
-        child->d_func()->parent = item;
+
+        auto d = child->d_func();
+        d->parent = item;
+        d->status = AceTreeItem::Record;
         d->records.insert(seq, child);
         d->recordIndexes.insert(child, seq);
     }
@@ -523,7 +485,10 @@ AceTreeItem *AceTreeItemPrivate::read_helper(QDataStream &in, bool user) {
             myWarning(__func__) << "read set item failed";
             goto abort;
         }
-        child->d_func()->parent = item;
+
+        auto d = child->d_func();
+        d->parent = item;
+        d->status = AceTreeItem::Element;
         d->set.insert(key, child);
         d->setIndexes.insert(child, key);
     }
@@ -613,10 +578,6 @@ AceTreeItem *AceTreeItemPrivate::clone_helper(bool user) const {
     }
 
     return item;
-}
-
-AceTreeItemPrivate *AceTreeItemPrivate::get(AceTreeItem *item) {
-    return item->d_func();
 }
 
 void AceTreeItemPrivate::propagate(AceTreeItem *item,
@@ -1101,7 +1062,7 @@ bool AceTreeItem::removeElement(AceTreeItem *item) {
     return true;
 }
 
-AceTreeItem *AceTreeItem::element(const QString &key) {
+AceTreeItem *AceTreeItem::element(const QString &key) const {
     Q_D(const AceTreeItem);
     return d->set.value(key, nullptr);
 }
@@ -1111,9 +1072,16 @@ QString AceTreeItem::elementKeyOf(AceTreeItem *item) const {
     return d->setIndexes.value(item);
 }
 
+bool AceTreeItem::containsElement(AceTreeItem *item) const {
+    Q_D(const AceTreeItem);
+    return d->setIndexes.contains(item);
+}
+
 QStringList AceTreeItem::elementKeys() const {
     Q_D(const AceTreeItem);
-    return d->set.keys();
+    auto keys = d->set.keys();
+    std::sort(keys.begin(), keys.end());
+    return keys;
 }
 
 QList<AceTreeItem *> AceTreeItem::elements() const {
@@ -1181,8 +1149,8 @@ AceTreeItem *AceTreeItemSubscriber::treeItem() const {
     return d->m_treeItem;
 }
 
-void AceTreeItemSubscriber::event(AceTreeEvent *e) {
-    Q_UNUSED(e)
+void AceTreeItemSubscriber::event(AceTreeEvent *event) {
+    Q_UNUSED(event)
 }
 
 namespace AceTreePrivate {

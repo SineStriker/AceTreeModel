@@ -111,10 +111,6 @@ void AceTreeModelPrivate::propagate_model(AceTreeItem *item) {
     });
 }
 
-AceTreeModelPrivate *AceTreeModelPrivate::get(AceTreeModel *model) {
-    return model->d_func();
-}
-
 AceTreeModel::AceTreeModel(QObject *parent) : AceTreeModel(*new AceTreeModelPrivate(), parent) {
     Q_D(AceTreeModel);
     d->backend = new AceTreeMemBackend(this);
