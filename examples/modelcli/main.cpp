@@ -11,6 +11,8 @@
 
 static AceTreeModel *model;
 
+static AceTreeJournalBackend *backend;
+
 static const char *help_display[] = {
     "Control Commands:",
     "    help                               Show this help",
@@ -19,8 +21,8 @@ static const char *help_display[] = {
     "",
     "Model Commands:",
     "    new                                Create new item (Return negative temp id)",
-    "    del    <id>                        Remove item (Negative id only)",
-    "    show   <id>                        Show item",
+    "    del       <id>                     Remove item (Negative id only)",
+    "    show/ls   <id>                     Show item",
     "    rid                                Show root id",
     "    temp                               Show all temp items' id",
     "    steps                              Show step information",
@@ -28,9 +30,11 @@ static const char *help_display[] = {
     "    undo                               Undo",
     "    redo                               Redo",
     "    reset                              Reset",
+    "    chdir                              Switch journal directory"
     "",
     "    set    <id> <key> <value>          Set property",
     "    get    <id> <key>                  Get property",
+    "    ps     <id>                        Show properties",
     "",
     "    repb   <id> <index> <bytes...>     Replace bytes",
     "    insb   <id> <index> <bytes...>     Insert bytes",
@@ -96,34 +100,45 @@ static void showItem(AceTreeItem *item, int indent, const char *prefix = nullptr
         qDebug().noquote().nospace() << indent_str.c_str() << prefix;
     }
     qDebug().noquote().nospace() << indent_str.c_str() << "id: " << item->index();
-    qDebug().noquote().nospace() << indent_str.c_str() << "properties: ";
-    auto map = item->propertyMap();
-    for (auto it = map.begin(); it != map.end(); ++it) {
-        qDebug().nospace().noquote()
-            << indent_str.c_str() << "  " << it.key() << ": " << it.value();
+    if (item->bytesSize() > 0) {
+        qDebug().noquote().nospace() << indent_str.c_str() << "bytes: " << item->bytes();
+    }
+    auto props = item->propertyMap();
+    if (!props.isEmpty()) {
+        qDebug().noquote().nospace() << indent_str.c_str() << "properties: ";
+        for (auto it = props.begin(); it != props.end(); ++it) {
+            qDebug().nospace().noquote()
+                << indent_str.c_str() << "  " << it.key() << ": " << it.value().toString();
+        }
     }
 
     indent += 2;
-    qDebug().noquote().nospace() << indent_str.c_str() << "rows: ";
     auto rows = item->rows();
-    int i = 0;
-    for (const auto &child : qAsConst(rows)) {
-        showItem(child, indent,
-                 QString("index: %1").arg(QString::number(i++)).toStdString().c_str());
-        qDebug().noquote().nospace() << indent_str.c_str() << "  --------";
+    if (!rows.isEmpty()) {
+        qDebug().noquote().nospace() << indent_str.c_str() << "rows: ";
+        int i = 0;
+        for (const auto &child : qAsConst(rows)) {
+            showItem(child, indent,
+                     QString("index: %1").arg(QString::number(i++)).toStdString().c_str());
+            qDebug().noquote().nospace() << indent_str.c_str() << "  --------";
+        }
     }
-    qDebug().noquote().nospace() << indent_str.c_str() << "records: ";
     auto recs = item->recordMap();
-    for (auto it = recs.begin(); it != recs.end(); ++it) {
-        showItem(it.value(), indent,
-                 QString("seq: %1").arg(QString::number(it.key())).toStdString().c_str());
-        qDebug().noquote().nospace() << indent_str.c_str() << "  --------";
+    if (!recs.isEmpty()) {
+        qDebug().noquote().nospace() << indent_str.c_str() << "records: ";
+        for (auto it = recs.begin(); it != recs.end(); ++it) {
+            showItem(it.value(), indent,
+                     QString("seq: %1").arg(QString::number(it.key())).toStdString().c_str());
+            qDebug().noquote().nospace() << indent_str.c_str() << "  --------";
+        }
     }
-    qDebug().noquote().nospace() << indent_str.c_str() << "elements: ";
     auto eles = item->elementMap();
-    for (auto it = eles.begin(); it != eles.end(); ++it) {
-        showItem(it.value(), indent, QString("key: %1").arg(it.key()).toStdString().c_str());
-        qDebug().noquote().nospace() << indent_str.c_str() << "  --------";
+    if (!eles.isEmpty()) {
+        qDebug().noquote().nospace() << indent_str.c_str() << "elements: ";
+        for (auto it = eles.begin(); it != eles.end(); ++it) {
+            showItem(it.value(), indent, QString("key: %1").arg(it.key()).toStdString().c_str());
+            qDebug().noquote().nospace() << indent_str.c_str() << "  --------";
+        }
     }
 }
 
@@ -229,7 +244,7 @@ static void cli() {
         }
 
         // Show
-        if (cmd == "show") {
+        if (cmd == "show" || cmd == "ls") {
             ENSURE_SIZE(2);
             auto id = list.at(1).toInt();
             GET_ITEM(id);
@@ -283,9 +298,20 @@ static void cli() {
             continue;
         }
 
-        // Redo
+        // Reset
         if (cmd == "reset") {
             model->reset();
+            continue;
+        }
+
+        // Chdir
+        if (cmd == "chdir") {
+            ENSURE_SIZE(2);
+            if (backend->switchDir(list.at(1))) {
+                qDebug() << "OK";
+            } else {
+                qDebug() << "Failed";
+            }
             continue;
         }
 
@@ -326,6 +352,18 @@ static void cli() {
 
             auto key = list.at(2);
             qDebug() << item->property(key);
+            continue;
+        }
+
+        // ps
+        if (cmd == "ps") {
+            ENSURE_SIZE(2);
+            auto id = list.at(1).toInt();
+            GET_ITEM(id);
+            auto map = item->propertyMap();
+            for (auto it = map.begin(); it != map.end(); ++it) {
+                qDebug().nospace().noquote() << "  " << it.key() << ": " << it.value();
+            }
             continue;
         }
 
@@ -677,7 +715,8 @@ static void cli() {
 int main(int argc, char *argv[]) {
     QCoreApplication a(argc, argv);
 
-    auto backend = new AceTreeJournalBackend();
+    backend = new AceTreeJournalBackend();
+
     auto dir = QDir(QCoreApplication::applicationDirPath() + "/model");
     if (dir.exists()) {
         if (!backend->recover(dir.absolutePath())) {

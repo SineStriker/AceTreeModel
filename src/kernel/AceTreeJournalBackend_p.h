@@ -34,6 +34,7 @@ public:
         int fsMax;
         int fsStep;
         int currentNum;
+        size_t maxId;
         AceTreeItem *root;
         QVector<AceTreeItem *> removedItems;
         QVector<Tasks::OpsAndAttrs> backwardData;
@@ -99,6 +100,14 @@ public:
         QHash<QString, QString> res;
         volatile bool finished;
         AttributesTaskBuffer() : finished(false) {
+        }
+    };
+
+    struct SwitchDirBuffer {
+        std::mutex mtx;
+        std::condition_variable cv;
+        volatile bool finished;
+        SwitchDirBuffer() : finished(false) {
         }
     };
 

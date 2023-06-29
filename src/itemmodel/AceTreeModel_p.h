@@ -20,7 +20,7 @@ public:
     void init();
 
     AceTreeModel *q_ptr;
-    bool is_destruct;
+    bool is_clearing;
 
     AceTreeBackend *backend;
     QList<AceTreeEvent *> tx_stack;

@@ -20,6 +20,8 @@ public:
     bool start(const QString &dir);
     bool recover(const QString &dir);
 
+    bool switchDir(const QString &dir);
+
 public:
     void setup(AceTreeModel *model) override;
 

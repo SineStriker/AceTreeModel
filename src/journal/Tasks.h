@@ -14,6 +14,7 @@ namespace Tasks {
         WriteCheckPoint,
         UpdateModelInfo,
         ReadAttributes,
+        SwitchDirectory,
         Reset,
     };
     Q_ENUM_NS(TaskType);
@@ -32,13 +33,14 @@ namespace Tasks {
     };
 
     struct CommitTask : public BaseTask {
-        CommitTask() : BaseTask(Commit), fsStep(-1), fsMin(-1) {
+        CommitTask() : BaseTask(Commit), fsStep(-1), fsMin(-1), maxId(0) {
         }
         ~CommitTask();
 
         OpsAndAttrs data;
         int fsStep;
         int fsMin;
+        size_t maxId;
     };
 
     struct ChangeStepTask : public BaseTask {
@@ -82,6 +84,14 @@ namespace Tasks {
         }
 
         int step;
+        void *buf;
+    };
+
+    struct SwitchDirTask : public BaseTask {
+        SwitchDirTask() : BaseTask(SwitchDirectory), buf(nullptr) {
+        }
+
+        QString target;
         void *buf;
     };
 

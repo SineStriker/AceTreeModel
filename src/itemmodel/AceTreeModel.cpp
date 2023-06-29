@@ -19,7 +19,7 @@ bool *AceTreeModelPrivate::InterruptGuard::shared_null = &dummy;
 
 // Model
 AceTreeModelPrivate::AceTreeModelPrivate() {
-    is_destruct = false;
+    is_clearing = false;
     backend = nullptr;
     m_state = AceTreeModel::Idle;
     m_metaOperation = false;
@@ -28,7 +28,7 @@ AceTreeModelPrivate::AceTreeModelPrivate() {
 }
 
 AceTreeModelPrivate::~AceTreeModelPrivate() {
-    is_destruct = true;
+    is_clearing = true;
 
     // Must delete backend first, the backend has a reference of items on model
     if (backend) {
@@ -81,7 +81,7 @@ void AceTreeModelPrivate::addManagedItem_backend(AceTreeItem *item) {
 
 int AceTreeModelPrivate::addIndex(AceTreeItem *item, size_t idx) {
     int index = idx > 0 ? (maxIndex = qMax(maxIndex, idx), idx) : (++maxIndex);
-    qDebug() << item << index;
+    // qDebug() << item << index;
     indexes.insert(std::make_pair(index, item));
     return index;
 }

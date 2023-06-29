@@ -57,7 +57,7 @@ AceTreeItemPrivate::~AceTreeItemPrivate() {
         }
 
         auto d = model->d_func();
-        if (!d->is_destruct)
+        if (!d->is_clearing)
             model->d_func()->removeIndex(m_index);
     } else {
         switch (status) {
@@ -511,22 +511,21 @@ AceTreeItem *AceTreeItemPrivate::read_helper(QDataStream &in, bool user) {
     d->set.reserve(size);
     d->setIndexes.reserve(size);
     for (int i = 0; i < size; ++i) {
-        QByteArray key;
-        in >> key;
+        QString key;
+        AceTreePrivate::operator>>(in, key);
         if (in.status() != QDataStream::Ok) {
             myWarning(__func__) << "read set key failed";
             goto abort;
         }
 
-        QString keyStr = QString::fromUtf8(key);
         auto child = read_helper(in, user);
         if (!child) {
             myWarning(__func__) << "read set item failed";
             goto abort;
         }
         child->d_func()->parent = item;
-        d->set.insert(keyStr, child);
-        d->setIndexes.insert(child, keyStr);
+        d->set.insert(key, child);
+        d->setIndexes.insert(child, key);
     }
 
     return item;
@@ -567,7 +566,7 @@ void AceTreeItemPrivate::write_helper(QDataStream &out, bool user) const {
     // Write set
     out << d->set.size();
     for (auto it = d->set.begin(); it != d->set.end(); ++it) {
-        out << it.key().toUtf8();
+        AceTreePrivate::operator<<(out, it.key());
         it.value()->d_func()->write_helper(out, user);
     }
 }

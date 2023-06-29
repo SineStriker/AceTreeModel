@@ -6,24 +6,26 @@
 
 #include <QDataStream>
 #include <QDebug>
+#include <QDir>
 #include <QFileInfo>
 #include <QTimer>
+
+// #ifdef qDebug
+// #undef qDebug
+// #def ine qDebug \
+//    while (false) \ QMessageLogger(QT_MESSAGELOG_FILE, QT_MESSAGELOG_LINE,
+//     QT_MESSAGELOG_FUNC).debug
+// #endif
 
 #define myWarning(func)                                                                            \
     (qWarning().nospace() << "AceTreeJournalBackend::" << (func) << "():").space()
 
-static bool truncateJournals(const QString &dir, int i) {
-    bool b1 = QFile::remove(QString("%1/journal_%2.dat").arg(dir, QString::number(i)));
-    bool b2 = QFile::remove(QString("%1/ckpt_%2.dat").arg(dir, QString::number(i)));
+static bool truncateJournals(const QString &dir, int i, bool dryRun = false) {
+    auto func = dryRun ? QOverload<const QString &>::of(QFile::exists)
+                       : QOverload<const QString &>::of(QFile::remove);
 
-    if (b1) {
-        qDebug().noquote().nospace()
-            << "[Journal] Remove " << QString("%1/journal_%2.dat").arg(dir, QString::number(i));
-    }
-    if (b2) {
-        qDebug().noquote().nospace()
-            << "[Journal] Remove " << QString("%1/ckpt_%2.dat").arg(dir, QString::number(i));
-    }
+    bool b1 = func(QString("%1/journal_%2.dat").arg(dir, QString::number(i))) || (i == 0);
+    bool b2 = func(QString("%1/ckpt_%2.dat").arg(dir, QString::number(i)));
 
     return b1 || b2;
 };
@@ -58,22 +60,24 @@ void AceTreeJournalBackendPrivate::init() {
 }
 
 void AceTreeJournalBackendPrivate::setup_helper() {
+    auto model_p = AceTreeModelPrivate::get(model);
     if (!recoverData) {
-        QFile file(QString("%1/model_step.dat").arg(dir));
+        QFile file(QString("%1/model_steps.dat").arg(dir));
         file.open(QIODevice::WriteOnly);
         QDataStream out(&file);
 
         // Write steps
-        out << maxSteps << maxCheckPoints << fsMin2 << fsMax2 << fsStep2;
+        out << maxSteps << maxCheckPoints << fsMin2 << fsMax2 << fsStep2 << model_p->maxIndex;
         return;
     }
 
     fsMin2 = fsMin = recoverData->fsMin;
     fsMax2 = fsMax = recoverData->fsMax;
     fsStep2 = recoverData->fsStep;
+    model_p->maxIndex = recoverData->maxId;
 
     if (recoverData->root) {
-        AceTreeModelPrivate::get(model)->setRootItem_backend(recoverData->root);
+        model_p->setRootItem_backend(recoverData->root);
         recoverData->root = nullptr; // Get ownership
     }
 
@@ -462,14 +466,14 @@ Tasks::WriteCkptTask *AceTreeJournalBackendPrivate::genWriteCkptTask() const {
 void AceTreeJournalBackendPrivate::updateStackSize() {
     // if (stack.size() > 3 * maxSteps) {
     if (current <= maxSteps / 2) {
-        int size = stack.size() - 2 * maxSteps - 1;
+        int size = stack.size() - 2 * maxSteps;
 
         if (size > 0) {
             // Abort forward transactions reading task
             abortForwardReadTask();
 
             // Remove tail
-            removeEvents(2 * maxSteps + 1, stack.size());
+            removeEvents(2 * maxSteps, stack.size());
 
             qDebug().noquote().nospace()
                 << "[Journal] Remove forward transactions, size=" << size << ", min=" << min
@@ -541,13 +545,27 @@ void AceTreeJournalBackendPrivate::afterCommit(const QList<AceTreeEvent *> &even
     {
         QVector<Operations::BaseOp *> ops;
         ops.reserve(events.size());
+        bool needUpdateIdx = false;
         for (const auto &event : events) {
             ops.append(Operations::toOp(event));
+            switch (event->type()) {
+                case AceTreeEvent::RowsInsert:
+                case AceTreeEvent::RecordAdd:
+                case AceTreeEvent::ElementAdd:
+                case AceTreeEvent::RootChange:
+                    needUpdateIdx = true;
+                    break;
+                default:
+                    break;
+            }
         }
         auto task = new Tasks::CommitTask();
         task->data = {std::move(ops), attributes};
         task->fsStep = fsMax;
         task->fsMin = fsMin;
+        if (needUpdateIdx) {
+            task->maxId = AceTreeModelPrivate::get(model)->maxIndex;
+        }
         pushTask(task);
     }
 
@@ -555,8 +573,6 @@ void AceTreeJournalBackendPrivate::afterCommit(const QList<AceTreeEvent *> &even
 }
 
 void AceTreeJournalBackendPrivate::afterReset() {
-    AceTreeMemBackendPrivate::afterReset();
-
     fsMin = 0;
     fsMax = 0;
 
@@ -754,13 +770,14 @@ void AceTreeJournalBackendPrivate::afterCurrentChange() {
     updateStackSize();
 }
 
-/* Steps data (model_steps.dat)
+/* Steps data (model_stepss.dat)
  *
  * 0x0          maxSteps in a checkpoint
  * 0x4          maxCheckpoints
  * 0x8          min step in log
  * 0xC          max step in log
  * 0x10         current step
+ * 0x14         max index in model
  *
  */
 
@@ -791,22 +808,36 @@ void AceTreeJournalBackendPrivate::afterCurrentChange() {
 void AceTreeJournalBackendPrivate::workerRoutine() {
     Q_Q(AceTreeMemBackend);
 
-    if (!stepFile) {
-        stepFile = new QFile(QString("%1/model_step.dat").arg(dir));
-    }
+    auto newFiles = [this]() {
+        if (!stepFile) {
+            stepFile = new QFile(QString("%1/model_steps.dat").arg(dir));
+        }
 
-    if (!infoFile) {
-        infoFile = new QFile(QString("%1/model_info.dat").arg(dir));
-    }
+        if (!infoFile) {
+            infoFile = new QFile(QString("%1/model_info.dat").arg(dir));
+        }
 
-    if (!txFile) {
-        txFile = new QFile();
-    }
+        if (!txFile) {
+            txFile = new QFile();
+        }
+    };
 
-    QFile &stepFile = *this->stepFile;
-    QFile &infoFile = *this->infoFile;
-    QFile &txFile = *this->txFile;
-    int &num = txNum;
+    auto deleteFiles = [this]() {
+        if (this->stepFile) {
+            delete this->stepFile;
+            this->stepFile = nullptr;
+        }
+        if (this->infoFile) {
+            delete this->infoFile;
+            this->infoFile = nullptr;
+        }
+        if (this->txFile) {
+            delete this->txFile;
+            this->txFile = nullptr;
+        }
+    };
+
+    newFiles();
 
     // Do initial work
     while (!task_queue.empty()) {
@@ -828,15 +859,15 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
 
                 // Write transaction
                 {
-                    auto &file = txFile;
+                    auto &file = *txFile;
                     int num1 = (fsStep2 - 1) / maxSteps;
-                    if (!file.isOpen() || num != num1) {
-                        num = num1;
+                    if (!file.isOpen() || txNum != num1) {
+                        txNum = num1;
 
                         // Reopen file
                         file.close();
                         file.setFileName(
-                            QString("%1/journal_%2.dat").arg(dir, QString::number(num)));
+                            QString("%1/journal_%2.dat").arg(dir, QString::number(txNum)));
 
                         auto exists = file.exists();
                         file.open(QIODevice::ReadWrite | QIODevice::Append);
@@ -893,7 +924,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
 
                 // Write steps (Must do it after writing transaction)
                 {
-                    auto &file = stepFile;
+                    auto &file = *stepFile;
                     bool exists = file.exists();
                     if (!file.isOpen()) {
                         file.open(QIODevice::ReadWrite | QIODevice::Append);
@@ -906,6 +937,13 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                         file.seek(8);
                     }
                     out << fsMin2 << fsMax2 << fsStep2;
+
+                    if (task->maxId > 0) {
+                        out << task->maxId;
+                    } else if (!exists) {
+                        out << size_t(0);
+                    }
+
                     file.flush();
                 }
 
@@ -935,7 +973,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
 
                 // Write step
                 {
-                    auto &file = stepFile;
+                    auto &file = *stepFile;
                     if (!file.isOpen())
                         file.open(QIODevice::ReadWrite | QIODevice::Append);
 
@@ -1004,7 +1042,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
 
                 // Write info
                 {
-                    auto &file = infoFile;
+                    auto &file = *infoFile;
                     if (!file.isOpen())
                         file.open(QIODevice::ReadWrite);
                     file.seek(0);
@@ -1033,7 +1071,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
 
             case Tasks::Reset: {
                 // Remove all files
-                infoFile.remove();
+                infoFile->remove();
 
                 int oldMin = fsMin2;
                 int oldMax = fsMax2;
@@ -1045,7 +1083,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
 
                 // Write steps
                 {
-                    auto &file = stepFile;
+                    auto &file = *stepFile;
                     bool exists = file.exists();
                     if (!file.isOpen()) {
                         file.open(QIODevice::ReadWrite | QIODevice::Append);
@@ -1057,14 +1095,15 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                     } else {
                         file.seek(8);
                     }
-                    out << fsMin2 << fsMax2 << fsStep2;
+                    out << fsMin2 << fsMax2 << fsStep2 << size_t(0);
                     file.flush();
                 }
 
                 // Truncate
                 {
-                    if (this->txFile) {
-                        delete this->txFile;
+                    auto &file = *txFile;
+                    if (file.isOpen()) {
+                        file.close();
                     }
                     int oldMinNum = oldMin / maxSteps;
                     int oldMaxNum = (oldMax - 1) / maxSteps;
@@ -1072,6 +1111,81 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                         truncateJournals(dir, i);
                     }
                 }
+                break;
+            }
+
+            case Tasks::SwitchDirectory: {
+                auto task = static_cast<Tasks::SwitchDirTask *>(cur_task);
+
+                // Remove opened files
+                deleteFiles();
+
+                // Start moving directory
+
+                // Collect files
+                int minNum = fsMin2 / maxSteps;
+                int maxNum = (fsMax2 - 1) / maxSteps;
+
+                QFileInfoList filesToCopy{
+                    QString("%1/model_steps.dat").arg(dir),
+                };
+
+                QFileInfo infoFile1(QString("%1/model_info.dat").arg(dir));
+                if (infoFile1.isDir()) {
+                    filesToCopy.append(infoFile1);
+                }
+
+                for (int i = minNum; i <= maxNum; ++i) {
+                    filesToCopy.append({
+                        QFileInfo(QString("%1/journal_%2.dat").arg(dir, QString::number(i))),
+                        QFileInfo(QString("%1/ckpt_%2.dat").arg(dir, QString::number(i))),
+                    });
+                }
+
+                QFile lockFile1(QString("%1/switch.lock").arg(dir));
+                QFile lockFile2(QString("%1/switch.lock").arg(task->target));
+
+                // Create lock file 2
+                {
+                    lockFile2.open(QIODevice::WriteOnly | QIODevice::Text);
+                    QTextStream out(&lockFile2);
+                    out << dir << Qt::endl;
+                    lockFile2.close();
+                }
+
+                // Create lock file 1
+                {
+                    lockFile1.open(QIODevice::WriteOnly | QIODevice::Text);
+                    QTextStream out(&lockFile1);
+                    out << task->target << Qt::endl;
+                }
+
+                // Copy files
+                for (const auto &info : qAsConst(filesToCopy)) {
+                    QFile::copy(info.absoluteFilePath(),
+                                QString("%1/%2").arg(task->target, info.fileName()));
+                }
+
+                // Remove lock file 2
+                lockFile2.remove();
+
+                // Remove lock file 1
+                lockFile1.remove();
+
+                // Remove old directory
+                QString oldDir = dir;
+
+                // Swtich directory name
+                dir = task->target;
+
+                // Deferred remove directory
+                QTimer::singleShot(0, q, [oldDir]() {
+                    QDir(oldDir).removeRecursively(); //
+                });
+
+                newFiles();
+
+                break;
             }
 
             default:
@@ -1135,11 +1249,18 @@ void AceTreeJournalBackend::setReservedCheckPoints(int n) {
     d->maxCheckPoints = n;
 }
 
+static bool checkDir_helper(const char *func, const QString &dir) {
+    QFileInfo info(dir);
+    if (dir.isEmpty() || !info.isDir() || !info.isWritable()) {
+        myWarning(func) << dir << "is not writable";
+        return false;
+    }
+    return true;
+}
+
 bool AceTreeJournalBackend::start(const QString &dir) {
     Q_D(AceTreeJournalBackend);
-    QFileInfo info(dir);
-    if (!info.isDir() || !info.isWritable()) {
-        myWarning(__func__) << dir << "is not writable";
+    if (!checkDir_helper(__func__, dir)) {
         return false;
     }
 
@@ -1155,28 +1276,59 @@ bool AceTreeJournalBackend::start(const QString &dir) {
 bool AceTreeJournalBackend::recover(const QString &dir) {
     Q_D(AceTreeJournalBackend);
 
-    {
-        QFileInfo info(dir);
-        if (!info.isDir() || !info.isWritable()) {
-            myWarning(__func__) << dir << "is not writable";
-            return false;
-        }
+    if (!checkDir_helper(__func__, dir)) {
+        return false;
     }
 
+    // 3. Crash diring directory switching
+    {
+        QString targetDir;
+        QString refDir;
+
+        QFile lockFile1(QString("%1/switch.lock").arg(dir));
+        if (!lockFile1.open(QIODevice::ReadOnly)) {
+            goto out_fix;
+        }
+
+        QTextStream in(&lockFile1);
+        targetDir = in.readLine();
+        lockFile1.close();
+
+        QFile lockFile2(QString("%1/switch.lock").arg(targetDir));
+        if (!lockFile2.open(QIODevice::ReadOnly)) {
+            lockFile1.remove();
+            goto out_fix;
+        }
+
+        in.setDevice(&lockFile2);
+        refDir = in.readLine();
+        lockFile2.close();
+
+        QDir newDir(targetDir);
+        if (newDir.canonicalPath() == QFileInfo(refDir).canonicalFilePath()) {
+            // Crash occurs when copying files
+            newDir.removeRecursively();
+        }
+
+        lockFile1.remove();
+    }
+
+out_fix:
     // Read steps
     int maxSteps, maxCheckPoints, fsMin, fsMax, fsStep;
+    size_t maxId;
     auto readSteps = [&](QFile &file) {
         QDataStream in(&file);
-        in >> maxSteps >> maxCheckPoints >> fsMin >> fsMax >> fsStep;
+        in >> maxSteps >> maxCheckPoints >> fsMin >> fsMax >> fsStep >> maxId;
         if (in.status() != QDataStream::Ok) {
             return false;
         }
         return true;
     };
     {
-        QFile file(QString("%1/model_step.dat").arg(dir));
+        QFile file(QString("%1/model_steps.dat").arg(dir));
         if (!file.open(QIODevice::ReadOnly) || !readSteps(file)) {
-            myWarning(__func__) << "read model_step.dat failed";
+            myWarning(__func__) << "read model_steps.dat failed";
             return false;
         }
     }
@@ -1237,16 +1389,27 @@ bool AceTreeJournalBackend::recover(const QString &dir) {
             if (!truncateJournals(dir, i))
                 break;
         }
+
+        // Check existence
+        for (int i = minNum; i <= maxNum; ++i) {
+            if (!truncateJournals(dir, i, true)) {
+                myWarning(__func__).noquote()
+                    << QString("check ckpt_%1.dat or journal_%1.dat failed")
+                           .arg(QString::number(i));
+                return false;
+            }
+        }
     }
 
+    QVariantHash modelInfo;
     {
         QFile file(QString("%1/model_info.dat").arg(dir));
         if (file.open(QIODevice::ReadOnly)) {
             QDataStream in(&file);
             QVariantHash modelInfo;
             in >> modelInfo;
-            if (in.status() == QDataStream::Ok) {
-                d->modelInfo = modelInfo;
+            if (in.status() != QDataStream::Ok) {
+                modelInfo.clear();
             }
         }
     }
@@ -1273,7 +1436,6 @@ bool AceTreeJournalBackend::recover(const QString &dir) {
     QVector<AceTreeItem *> removedItems;
     QVector<Tasks::OpsAndAttrs> backwardData;
     QVector<Tasks::OpsAndAttrs> forwardData;
-    QVariantHash modelInfo;
 
     if (num > 0) {
         bool needBackward = num > minNum;
@@ -1329,6 +1491,7 @@ success:
     rdata->fsMax = fsMax;
     rdata->fsStep = fsStep;
     rdata->currentNum = num;
+    rdata->maxId = maxId;
     rdata->root = root;
     rdata->removedItems = removedItems;
     rdata->backwardData = backwardData;
@@ -1337,6 +1500,39 @@ success:
     d->maxCheckPoints = maxCheckPoints;
     d->recoverData = rdata;
     d->dir = dir;
+    d->modelInfo = modelInfo;
+    return true;
+}
+
+bool AceTreeJournalBackend::switchDir(const QString &dir) {
+    Q_D(AceTreeJournalBackend);
+    if (d->dir.isEmpty()) {
+        return false;
+    }
+
+    if (!checkDir_helper(__func__, dir)) {
+        return false;
+    }
+
+    QFileInfo orgDir(d->dir);
+    QFileInfo newDir(dir);
+
+    {
+        QString innerCanonical = newDir.canonicalFilePath() + "/";
+        QString outerCanonical = orgDir.canonicalFilePath() + "/";
+
+        // Cannot switch to inner directory
+        if (innerCanonical.startsWith(outerCanonical)) {
+            qDebug() << innerCanonical << outerCanonical;
+
+            return false;
+        }
+    }
+
+    auto task = new Tasks::SwitchDirTask();
+    task->target = dir;
+    d->pushTask(task);
+
     return true;
 }
 

@@ -7,7 +7,26 @@
 
 namespace Operations {
 
+    static const char SIGN_OP[] = "SEG ";
+
+    inline static void writeHead(QDataStream &out) {
+        out.writeRawData(SIGN_OP, sizeof(SIGN_OP) - 1);
+    }
+
+    static bool readHead(QDataStream &in) {
+        char sign[sizeof(SIGN_OP) - 1];
+        in.readRawData(sign, sizeof(sign));
+        if (memcmp(SIGN_OP, sign, sizeof(sign)) == 0)
+            return true;
+
+        in.setStatus(QDataStream::ReadCorruptData);
+        return false;
+    }
+
     bool PropertyChangeOp::read(QDataStream &in) {
+        if (!readHead(in)) {
+            return false;
+        }
         in >> parent;
         AceTreePrivate::operator>>(in, key);
         in >> oldValue;
@@ -16,6 +35,7 @@ namespace Operations {
     }
 
     bool PropertyChangeOp::write(QDataStream &out) const {
+        writeHead(out);
         out << parent;
         AceTreePrivate::operator<<(out, key);
         out << oldValue;
@@ -24,21 +44,29 @@ namespace Operations {
     }
 
     bool BytesReplaceOp::read(QDataStream &in) {
+        if (!readHead(in)) {
+            return false;
+        }
         in >> parent >> index >> oldBytes >> newBytes;
         return in.status() == QDataStream::Ok;
     }
 
     bool BytesReplaceOp::write(QDataStream &out) const {
+        writeHead(out);
         out << parent << index << oldBytes << newBytes;
         return out.status() == QDataStream::Ok;
     }
 
     bool BytesInsertRemoveOp::read(QDataStream &in) {
+        if (!readHead(in)) {
+            return false;
+        }
         in >> parent >> index >> bytes;
         return in.status() == QDataStream::Ok;
     }
 
     bool BytesInsertRemoveOp::write(QDataStream &out) const {
+        writeHead(out);
         out << parent << index << bytes;
         return out.status() == QDataStream::Ok;
     }
@@ -48,6 +76,9 @@ namespace Operations {
     }
 
     bool RowsInsertOp::read(QDataStream &in) {
+        if (!readHead(in)) {
+            return false;
+        }
         int size;
         in >> parent >> index >> size;
         children.reserve(size);
@@ -66,6 +97,7 @@ namespace Operations {
     }
 
     bool RowsInsertOp::write(QDataStream &out) const {
+        writeHead(out);
         out << parent << index << children.size();
         for (const auto &child : qAsConst(children)) {
             out << child->index();
@@ -91,6 +123,9 @@ namespace Operations {
     }
 
     bool RowsInsertOp::readBrief(QDataStream &in) {
+        if (!readHead(in)) {
+            return false;
+        }
         int size;
         in >> parent >> index >> size;
         childrenIds.reserve(size);
@@ -108,6 +143,9 @@ namespace Operations {
     }
 
     bool RowsRemoveOp::read(QDataStream &in) {
+        if (!readHead(in)) {
+            return false;
+        }
         int size;
         in >> parent >> index >> size;
         children.reserve(size);
@@ -124,6 +162,7 @@ namespace Operations {
     }
 
     bool RowsRemoveOp::write(QDataStream &out) const {
+        writeHead(out);
         out << parent << index << children.size();
         for (const auto &id : qAsConst(children)) {
             out << id;
@@ -132,11 +171,15 @@ namespace Operations {
     }
 
     bool RowsMoveOp::read(QDataStream &in) {
+        if (!readHead(in)) {
+            return false;
+        }
         in >> parent >> index >> count >> dest;
         return in.status() == QDataStream::Ok;
     }
 
     bool RowsMoveOp::write(QDataStream &out) const {
+        writeHead(out);
         out << parent << index << count << dest;
         return out.status() == QDataStream::Ok;
     }
@@ -146,6 +189,9 @@ namespace Operations {
     }
 
     bool RecordAddOp::read(QDataStream &in) {
+        if (!readHead(in)) {
+            return false;
+        }
         in >> parent >> seq;
         in.skipRawData(sizeof(size_t) + sizeof(qint64));
         auto item = AceTreeItemPrivate::read_helper(in, false);
@@ -158,6 +204,8 @@ namespace Operations {
     }
 
     bool RecordAddOp::write(QDataStream &out) const {
+        writeHead(out);
+
         out << parent << seq << child->index();
 
         out << qint64(0);
@@ -175,6 +223,9 @@ namespace Operations {
     }
 
     bool RecordAddOp::readBrief(QDataStream &in) {
+        if (!readHead(in)) {
+            return false;
+        }
         in >> parent >> seq >> childId;
 
         qint64 delta;
@@ -185,11 +236,15 @@ namespace Operations {
     }
 
     bool RecordRemoveOp::read(QDataStream &in) {
+        if (!readHead(in)) {
+            return false;
+        }
         in >> parent >> seq >> child;
         return in.status() == QDataStream::Ok;
     }
 
     bool RecordRemoveOp::write(QDataStream &out) const {
+        writeHead(out);
         out << parent << seq << child;
         return out.status() == QDataStream::Ok;
     }
@@ -199,6 +254,9 @@ namespace Operations {
     }
 
     bool ElementAddOp::read(QDataStream &in) {
+        if (!readHead(in)) {
+            return false;
+        }
         in >> parent;
         AceTreePrivate::operator>>(in, key);
         in.skipRawData(sizeof(size_t) + sizeof(qint64));
@@ -212,6 +270,8 @@ namespace Operations {
     }
 
     bool ElementAddOp::write(QDataStream &out) const {
+        writeHead(out);
+
         out << parent;
         AceTreePrivate::operator<<(out, key);
         out << child->index();
@@ -231,6 +291,9 @@ namespace Operations {
     }
 
     bool ElementAddOp::readBrief(QDataStream &in) {
+        if (!readHead(in)) {
+            return false;
+        }
         in >> parent;
         AceTreePrivate::operator>>(in, key);
         in >> childId;
@@ -243,6 +306,9 @@ namespace Operations {
     }
 
     bool ElementRemoveOp::read(QDataStream &in) {
+        if (!readHead(in)) {
+            return false;
+        }
         in >> parent;
         AceTreePrivate::operator>>(in, key);
         in >> child;
@@ -250,6 +316,7 @@ namespace Operations {
     }
 
     bool ElementRemoveOp::write(QDataStream &out) const {
+        writeHead(out);
         out << parent;
         AceTreePrivate::operator<<(out, key);
         out << child;
@@ -261,6 +328,9 @@ namespace Operations {
     }
 
     bool RootChangeOp::read(QDataStream &in) {
+        if (!readHead(in)) {
+            return false;
+        }
         size_t id;
         in >> oldRoot >> id;
         if (id != 0) {
@@ -275,6 +345,8 @@ namespace Operations {
     }
 
     bool RootChangeOp::write(QDataStream &out) const {
+        writeHead(out);
+
         // Write old root id
         out << oldRoot;
 
@@ -291,6 +363,9 @@ namespace Operations {
     }
 
     bool RootChangeOp::readBrief(QDataStream &in) {
+        if (!readHead(in)) {
+            return false;
+        }
         in >> oldRoot >> newRootId;
         return in.status() == QDataStream::Ok;
     }

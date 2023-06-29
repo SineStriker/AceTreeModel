@@ -55,10 +55,6 @@ void AceTreeMemBackendPrivate::afterCommit(const QList<AceTreeEvent *> &events,
 }
 
 void AceTreeMemBackendPrivate::afterReset() {
-    // Remove all events
-    removeEvents(0, stack.size());
-    min = 0;
-    current = 0;
 }
 
 AceTreeMemBackend::AceTreeMemBackend(QObject *parent)
@@ -176,11 +172,25 @@ void AceTreeMemBackend::reset() {
     Q_D(AceTreeMemBackend);
 
     auto model_d = AceTreeModelPrivate::get(d->model);
+
+    // Skip removing index when deleting item to speed up
+    model_d->is_clearing = true;
+
+    // Remove all events
+    d->removeEvents(0, d->stack.size());
+    d->min = 0;
+    d->current = 0;
+
+    // Remove root item
     auto root = model_d->rootItem;
     if (root) {
-        AceTreeItemPrivate::get(root)->changeManaged(true);
+        AceTreeItemPrivate::forceDeleteItem(root);
         model_d->rootItem = nullptr;
     }
+
+    model_d->is_clearing = false;
+    model_d->indexes.clear();
+    model_d->maxIndex = 0;
 
     d->afterReset();
 }
