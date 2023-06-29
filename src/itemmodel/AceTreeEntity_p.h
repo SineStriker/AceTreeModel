@@ -3,7 +3,9 @@
 
 #include "AceTreeEntity.h"
 
-class ACETREE_EXPORT AceTreeEntityPrivate : public AceTreeItemSubscriber {
+#include "QMChronSet.h"
+
+class AceTreeEntityPrivate : public AceTreeItemSubscriber {
     Q_DECLARE_PUBLIC(AceTreeEntity)
 public:
     AceTreeEntityPrivate();
@@ -17,6 +19,10 @@ public:
 
     QSet<AceTreeEntity *> children;
     AceTreeEntity *parent;
+
+    AceTreeEntityExtra *extra;
+
+    void event(AceTreeEvent *event) override;
 
     virtual void init_deferred();
 
@@ -35,6 +41,18 @@ public:
     inline static const AceTreeEntityPrivate *get(const AceTreeEntity *entity) {
         return entity->d_func();
     }
+};
+
+class AceTreeEntityExtraPrivate {
+public:
+    AceTreeEntityExtraPrivate();
+    virtual ~AceTreeEntityExtraPrivate();
+
+    void init();
+
+    AceTreeEntityExtra *q_ptr;
+
+    AceTreeEntity *entity;
 };
 
 #endif // ACETREEENTITYPRIVATE_H

@@ -8,7 +8,7 @@
 #include "AceTreeEntity_p.h"
 #include "AceTreeStandardEntity.h"
 
-class ACETREE_EXPORT AceTreeStandardEntityPrivate : public AceTreeEntityPrivate {
+class AceTreeStandardEntityPrivate : public AceTreeEntityPrivate {
     Q_DECLARE_PUBLIC(AceTreeStandardEntity)
 public:
     explicit AceTreeStandardEntityPrivate(AceTreeStandardEntity::Type type);
@@ -47,15 +47,6 @@ public:
     void removeElement_assigns(AceTreeEntity *child);
 
 public:
-    template <class T>
-    void assignElement(const QString &key, T *&ptr) {
-        static_assert(std::is_base_of<AceTreeEntity, T>::value,
-                      "T should inherit from AceTreeEntity");
-        childPostAssignRefs.insert(key, [ptr](AceTreeEntity *item) {
-            ptr = static_cast<T *>(item); //
-        });
-    }
-
     inline static AceTreeStandardEntityPrivate *get(AceTreeStandardEntity *entity) {
         return entity->d_func();
     }
@@ -145,14 +136,13 @@ public:
     }
 };
 
-class ACETREE_EXPORT AceTreeEntityMappingPrivate : public AceTreeStandardEntityPrivate {
+class AceTreeEntityMappingPrivate : public AceTreeStandardEntityPrivate {
     Q_DECLARE_PUBLIC(AceTreeEntityMapping)
 public:
     AceTreeEntityMappingPrivate();
     ~AceTreeEntityMappingPrivate();
 
-    using Notifier =
-        std::function<void(AceTreeEntityMapping *, const QVariant &, const QVariant &)>;
+    using Notifier = AceTreeEntityMappingExtra::Notifier;
 
     QHash<QString, Notifier> dynamicPropertyNotifiers;
     QHash<QString, Notifier> propertyNotifiers;
@@ -171,5 +161,15 @@ public:
 
 #define ACE_A AceTreeEntityMapping *item, const QVariant &newValue, const QVariant &oldValue
 #define ACE_Q(Class) auto *const q = reinterpret_cast<Class *>(item)
+
+// AceTreeEntityMappingExtra
+class AceTreeEntityMappingExtraPrivate : public AceTreeEntityExtraPrivate {
+    Q_DECLARE_PUBLIC(AceTreeEntityMappingExtra)
+public:
+    AceTreeEntityMappingExtraPrivate();
+    ~AceTreeEntityMappingExtraPrivate();
+
+    void init();
+};
 
 #endif // CHORUSKIT_ACETREESTANDARDENTITY_P_H

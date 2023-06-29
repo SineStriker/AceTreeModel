@@ -186,6 +186,8 @@ void AceTreeStandardEntityPrivate::event(AceTreeEvent *event) {
         default:
             break;
     }
+
+    AceTreeEntityPrivate::event(event);
 }
 
 bool AceTreeStandardEntityPrivate::readVector_helper(
@@ -1627,8 +1629,6 @@ AceTreeEntityMapping::AceTreeEntityMapping(AceTreeEntityMappingPrivate &d, QObje
 }
 
 void AceTreeEntityMappingPrivate::event(AceTreeEvent *event) {
-    AceTreeStandardEntityPrivate::event(event);
-
     Q_Q(AceTreeEntityMapping);
     switch (event->type()) {
         case AceTreeEvent::DynamicDataChange: {
@@ -1651,6 +1651,59 @@ void AceTreeEntityMappingPrivate::event(AceTreeEvent *event) {
         default:
             break;
     }
+
+    AceTreeStandardEntityPrivate::event(event);
 }
 
 //===========================================================================
+// AceTreeEntityMappingExtra
+
+AceTreeEntityMappingExtraPrivate::AceTreeEntityMappingExtraPrivate() {
+}
+
+AceTreeEntityMappingExtraPrivate::~AceTreeEntityMappingExtraPrivate() {
+}
+
+void AceTreeEntityMappingExtraPrivate::init() {
+}
+
+AceTreeEntityMappingExtra::AceTreeEntityMappingExtra()
+    : AceTreeEntityExtra(*new AceTreeEntityMappingExtraPrivate()) {
+}
+
+AceTreeEntityMappingExtra::~AceTreeEntityMappingExtra() {
+}
+
+void AceTreeEntityMappingExtra::setup(AceTreeEntity *entity) {
+    Q_UNUSED(entity);
+}
+
+void AceTreeEntityMappingExtra::event(AceTreeEvent *event) {
+    Q_UNUSED(event);
+}
+
+AceTreeEntityMapping *AceTreeEntityMappingExtra::entity() const {
+    Q_D(const AceTreeEntityMappingExtra);
+    return qobject_cast<AceTreeEntityMapping *>(d->entity);
+}
+
+void AceTreeEntityMappingExtra::addDynamicDataNotifier(
+    const QString &key, const AceTreeEntityMappingExtra::Notifier &notifier) {
+    Q_D(const AceTreeEntityMappingExtra);
+    AceTreeEntityMappingPrivate::get(reinterpret_cast<AceTreeEntityMapping *>(d->entity))
+        ->dynamicPropertyNotifiers.insert(key, notifier);
+}
+
+void AceTreeEntityMappingExtra::addPropertyNotifier(
+    const QString &key, const AceTreeEntityMappingExtra::Notifier &notifier) {
+    Q_D(const AceTreeEntityMappingExtra);
+    AceTreeEntityMappingPrivate::get(reinterpret_cast<AceTreeEntityMapping *>(d->entity))
+        ->propertyNotifiers.insert(key, notifier);
+}
+
+void AceTreeEntityMappingExtra::addChildPointer_internal(
+    const QString &key, const std::function<void(AceTreeEntity *)> &callback) {
+    Q_D(const AceTreeEntityMappingExtra);
+    AceTreeEntityMappingPrivate::get(reinterpret_cast<AceTreeEntityMapping *>(d->entity))
+        ->childPostAssignRefs.insert(key, callback);
+}

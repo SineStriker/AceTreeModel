@@ -258,6 +258,8 @@ private:
     friend class AceTreeEntityRecordTableHelper;
 };
 
+class AceTreeEntityMappingExtra;
+
 class AceTreeEntityMappingPrivate;
 
 class ACETREE_EXPORT AceTreeEntityMapping : public AceTreeStandardEntity {
@@ -466,5 +468,39 @@ template <class T>
 int AceTreeEntityRecordTableHelper<T>::maxIndex() const {
     return to_entity()->maxRecordSeq();
 }
+
+class AceTreeEntityMappingExtraPrivate;
+
+class ACETREE_EXPORT AceTreeEntityMappingExtra : public AceTreeEntityExtra {
+    Q_DECLARE_PRIVATE(AceTreeEntityMappingExtra)
+public:
+    AceTreeEntityMappingExtra();
+    virtual ~AceTreeEntityMappingExtra();
+
+    void setup(AceTreeEntity *entity) override;
+    void event(AceTreeEvent *event) override;
+
+    AceTreeEntityMapping *entity() const;
+
+    template <class T>
+    void addChildPointer(const QString &key, T *&ptr) {
+        static_assert(std::is_base_of<AceTreeEntity, T>::value,
+                      "T should inherit from AceTreeEntity");
+        addChildPointer_internal(key, [ptr](AceTreeEntity *item) { ptr = static_cast<T *>(item); });
+    }
+
+    using Notifier =
+        std::function<void(AceTreeEntityMapping *, const QVariant &, const QVariant &)>;
+
+    void addDynamicDataNotifier(const QString &key, const Notifier &notifier);
+
+    void addPropertyNotifier(const QString &key, const Notifier &notifier);
+
+private:
+    void addChildPointer_internal(const QString &key,
+                                  const std::function<void(AceTreeEntity *)> &callback);
+
+    friend class AceTreeEntityMapping;
+};
 
 #endif // ACETREESTANDARDENTITY_H

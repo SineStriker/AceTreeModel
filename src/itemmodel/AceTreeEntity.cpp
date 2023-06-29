@@ -14,10 +14,22 @@ AceTreeEntityPrivate::~AceTreeEntityPrivate() {
 void AceTreeEntityPrivate::init() {
 }
 
+void AceTreeEntityPrivate::event(AceTreeEvent *event) {
+    if (extra) {
+        extra->event(event);
+    }
+}
+
 void AceTreeEntityPrivate::init_deferred() {
     Q_Q(AceTreeEntity);
     AceTreeItemPrivate::get(m_treeItem)->entity = q;
     m_treeItem->addSubscriber(this);
+
+    extra = q->createExtra();
+    if (extra) {
+        extra->d_func()->entity = q;
+        extra->setup(q);
+    }
 }
 
 AceTreeEntity::AceTreeEntity(QObject *parent) : AceTreeEntity(*new AceTreeEntityPrivate(), parent) {
@@ -134,9 +146,41 @@ void AceTreeEntity::childAboutToRemove(AceTreeEntity *child) {
     Q_UNUSED(child) //
 }
 
+AceTreeEntityExtra *AceTreeEntity::createExtra() const {
+    return nullptr;
+}
+
 AceTreeEntity::AceTreeEntity(AceTreeEntityPrivate &d, QObject *parent)
     : QObject(parent), d_ptr(&d) {
     d.q_ptr = this;
 
+    d.init();
+}
+
+AceTreeEntityExtraPrivate::AceTreeEntityExtraPrivate() : entity(nullptr) {
+}
+
+AceTreeEntityExtraPrivate::~AceTreeEntityExtraPrivate() {
+}
+
+void AceTreeEntityExtraPrivate::init() {
+}
+
+AceTreeEntityExtra::AceTreeEntityExtra() {
+}
+
+AceTreeEntityExtra::~AceTreeEntityExtra() {
+}
+
+void AceTreeEntityExtra::setup(AceTreeEntity *entity) {
+    Q_UNUSED(entity)
+}
+
+void AceTreeEntityExtra::event(AceTreeEvent *event) {
+    Q_UNUSED(event)
+}
+
+AceTreeEntityExtra::AceTreeEntityExtra(AceTreeEntityExtraPrivate &d) : d_ptr(&d) {
+    d.q_ptr = this;
     d.init();
 }

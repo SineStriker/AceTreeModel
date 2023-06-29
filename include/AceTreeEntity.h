@@ -7,6 +7,8 @@
 
 #include "AceTreeModel.h"
 
+class AceTreeEntityExtra;
+
 class AceTreeEntityPrivate;
 
 class ACETREE_EXPORT AceTreeEntity : public QObject {
@@ -42,8 +44,30 @@ protected:
     virtual void childAdded(AceTreeEntity *child);
     virtual void childAboutToRemove(AceTreeEntity *child);
 
+    virtual AceTreeEntityExtra *createExtra() const;
+
     AceTreeEntity(AceTreeEntityPrivate &d, QObject *parent = nullptr);
     QScopedPointer<AceTreeEntityPrivate> d_ptr;
+};
+
+class AceTreeEntityExtraPrivate;
+
+class ACETREE_EXPORT AceTreeEntityExtra {
+    Q_DECLARE_PRIVATE(AceTreeEntityExtra)
+public:
+    explicit AceTreeEntityExtra();
+    virtual ~AceTreeEntityExtra();
+
+    virtual void setup(AceTreeEntity *entity);
+    virtual void event(AceTreeEvent *event);
+
+protected:
+    AceTreeEntityExtra(AceTreeEntityExtraPrivate &d);
+
+    QScopedPointer<AceTreeEntityExtraPrivate> d_ptr;
+
+    friend class AceTreeEntity;
+    friend class AceTreeEntityPrivate;
 };
 
 #endif // ACETREEENTITY_H
