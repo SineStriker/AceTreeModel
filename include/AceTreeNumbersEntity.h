@@ -56,6 +56,11 @@ private:
     AceTreeNumbersEntity *to_entity();
 };
 
+#define ACE_TREE_DECLARE_NUMBERS_SIGNALS(T)                                                        \
+    void replaced(int index, const QVector<T> &values);                                            \
+    void inserted(int index, const QVector<T> &values);                                            \
+    void removed(int index, int count);
+
 template <class T>
 AceTreeEntityNumbersHelper<T>::AceTreeEntityNumbersHelper() {
     AceTreeNumbersEntity *e = to_entity();
