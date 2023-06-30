@@ -1,8 +1,6 @@
 #ifndef ACETREEMODEL_P_H
 #define ACETREEMODEL_P_H
 
-#include <QDebug>
-#include <QFileDevice>
 #include <QSet>
 #include <QStack>
 

@@ -278,7 +278,6 @@ class AceTreeEntityVectorHelper {
     static_assert(std::is_base_of<AceTreeEntity, T>::value, "T should inherit from AceTreeEntity");
 
 public:
-    AceTreeEntityVectorHelper(AceTreeEntityVector *){};
     bool prepend(T *item);
     bool prepend(const QVector<T *> &items);
     bool append(T *item);
@@ -295,12 +294,8 @@ public:
     int count() const;
 
 private:
-    const AceTreeStandardEntity *to_entity() const {
-        return AceTreeEntityVector::get_entity_helper(this);
-    }
-    AceTreeStandardEntity *to_entity() {
-        return AceTreeEntityVector::get_entity_helper(this);
-    }
+    const AceTreeStandardEntity *to_entity() const;
+    AceTreeStandardEntity *to_entity();
 };
 
 #define ACE_TREE_DECLARE_VECTOR_SIGNALS(T)                                                         \
@@ -315,7 +310,6 @@ class AceTreeEntityRecordTableHelper {
     static_assert(std::is_base_of<AceTreeEntity, T>::value, "T should inherit from AceTreeEntity");
 
 public:
-    AceTreeEntityRecordTableHelper(AceTreeEntityRecordTable *){};
     int insert(T *item);
     bool remove(int index);
     bool remove(T *item);
@@ -327,12 +321,8 @@ public:
     int maxIndex() const;
 
 private:
-    const AceTreeStandardEntity *to_entity() const {
-        return AceTreeEntityRecordTable::get_entity_helper(this);
-    }
-    AceTreeStandardEntity *to_entity() {
-        return AceTreeEntityRecordTable::get_entity_helper(this);
-    }
+    const AceTreeStandardEntity *to_entity() const;
+    AceTreeStandardEntity *to_entity();
 };
 
 #define ACE_TREE_DECLARE_RECORD_TABLE_SIGNALS(T)                                                   \
@@ -422,6 +412,17 @@ int AceTreeEntityVectorHelper<T>::count() const {
     return size();
 }
 
+template <class T>
+const AceTreeStandardEntity *AceTreeEntityVectorHelper<T>::to_entity() const {
+    return AceTreeEntityVector::get_entity_helper(this);
+}
+
+template <class T>
+AceTreeStandardEntity *AceTreeEntityVectorHelper<T>::to_entity() {
+    return AceTreeEntityVector::get_entity_helper(this);
+}
+
+
 
 template <class T>
 int AceTreeEntityRecordTableHelper<T>::insert(T *item) {
@@ -468,6 +469,17 @@ template <class T>
 int AceTreeEntityRecordTableHelper<T>::maxIndex() const {
     return to_entity()->maxRecordSeq();
 }
+
+template <class T>
+const AceTreeStandardEntity *AceTreeEntityRecordTableHelper<T>::to_entity() const {
+    return AceTreeEntityRecordTable::get_entity_helper(this);
+}
+
+template <class T>
+AceTreeStandardEntity *AceTreeEntityRecordTableHelper<T>::to_entity() {
+    return AceTreeEntityRecordTable::get_entity_helper(this);
+}
+
 
 class AceTreeEntityMappingExtraPrivate;
 
