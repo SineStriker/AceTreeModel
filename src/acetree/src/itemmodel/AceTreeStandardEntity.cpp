@@ -969,7 +969,7 @@ AceTreeEntity *AceTreeStandardEntity::record(int seq) const {
     return AceTreeEntity::itemToEntity(d->m_treeItem->record(seq));
 }
 
-int AceTreeStandardEntity::recordIndexOf(AceTreeEntity *entity) const {
+int AceTreeStandardEntity::recordSequenceOf(AceTreeEntity *entity) const {
     Q_D(const AceTreeStandardEntity);
     return d->m_treeItem->recordSequenceOf(AceTreeEntityPrivate::getItem(entity));
 }
@@ -982,11 +982,6 @@ QList<int> AceTreeStandardEntity::records() const {
 int AceTreeStandardEntity::recordCount() const {
     Q_D(const AceTreeStandardEntity);
     return d->m_treeItem->recordCount();
-}
-
-int AceTreeStandardEntity::maxRecordSeq() const {
-    Q_D(const AceTreeStandardEntity);
-    return d->m_treeItem->maxRecordSequence();
 }
 
 bool AceTreeStandardEntity::containsElement(AceTreeEntity *entity) const {

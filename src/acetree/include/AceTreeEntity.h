@@ -38,6 +38,8 @@ public:
 
     static AceTreeEntity *itemToEntity(AceTreeItem *item);
 
+    AceTreeItem *treeItem() const;
+
 protected:
     virtual void doInitialize() = 0;
     virtual void doSetup() = 0;
@@ -49,7 +51,6 @@ protected:
     QScopedPointer<AceTreeEntityPrivate> d_ptr;
 
 protected:
-    AceTreeItem *treeItem() const;
     AceTreeEntityExtra *extra() const;
 
     virtual void itemEvent(AceTreeEvent *event);
@@ -90,8 +91,7 @@ public:
     ~AceTreeEntityNotifyExtra();
 
 public:
-    using Notifier =
-        std::function<void(const QVariant & /* value */, const QVariant & /* oldValue */)>;
+    using Notifier = std::function<void(const QVariant & /* value */, const QVariant & /* oldValue */)>;
 
     void addDynamicDataNotifier(const QString &key, const Notifier &notifier);
     void removeDynamicDataNotifier(const QString &key);

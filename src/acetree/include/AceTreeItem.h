@@ -101,7 +101,6 @@ public:
     QList<int> records() const;
     QMap<int, AceTreeItem *> recordMap() const;
     int recordCount() const;
-    int maxRecordSequence() const;
 
     // Set - Elements
     inline bool insertElement(const QString &key, AceTreeItem *item);

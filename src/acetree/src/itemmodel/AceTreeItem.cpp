@@ -8,7 +8,9 @@
 #include <QDebug>
 #include <QtEndian>
 
-// #define ENABLE_DEBUG_COUNT
+#ifdef ACETREE_ENABLE_DEBUG
+#define ENABLE_DEBUG_COUNT
+#endif
 
 #define myWarning(func) (qWarning().nospace() << "AceTreeItem::" << (func) << "():").space()
 
@@ -28,26 +30,32 @@ static bool validateArrayRemoveArguments(int index, int &count, int size) {
 static int item_count = 0;
 #endif
 
+QDebug operator<<(QDebug debug, AceTreeItem *item) {
+    if (!item)
+        return debug << "AceTreeItem(0x0)";
+    QDebugStateSaver saver(debug);
+    return debug.nospace() << "AceTreeItem(" << uintptr_t(item) << ", index=" << item->index()
+                           << ")";
+}
+
 // Item
 AceTreeItemPrivate::AceTreeItemPrivate() {
-#ifdef ENABLE_DEBUG_COUNT
-    item_count++;
-    qDebug() << "AceTreeItemPrivate construct, left" << item_count;
-#endif
 
-    allowDelete = false;
+    is_clearing = false;
     status = AceTreeItem::Root;
     m_managed = false;
+    allowDelete = false;
     parent = nullptr;
     model = nullptr;
     m_index = 0;
-    maxRecordSeq = 0;
 
     entity = nullptr;
 }
 
 AceTreeItemPrivate::~AceTreeItemPrivate() {
     Q_Q(AceTreeItem);
+
+    is_clearing = true;
 
     // Clear subscribers
     if (model) {
@@ -58,7 +66,7 @@ AceTreeItemPrivate::~AceTreeItemPrivate() {
         auto d = model->d_func();
         if (!d->is_clearing)
             model->d_func()->removeIndex(m_index);
-    } else {
+    } else if (parent && !parent->d_func()->is_clearing) {
         switch (status) {
             case AceTreeItem::Row:
                 parent->removeRow(q);
@@ -77,11 +85,6 @@ AceTreeItemPrivate::~AceTreeItemPrivate() {
     qDeleteAll(vector);
     qDeleteAll(set);
     qDeleteAll(records);
-
-#ifdef ENABLE_DEBUG_COUNT
-    item_count--;
-    qDebug() << "AceTreeItemPrivate destroy, left" << item_count << q;
-#endif
 }
 
 void AceTreeItemPrivate::init() {
@@ -312,6 +315,7 @@ void AceTreeItemPrivate::addRecord_helper(int seq, AceTreeItem *item) {
     d->parent = q;
 
     records.insert(seq, item);
+    recordIds.insert(seq);
     recordIndexes.insert(item, seq);
 
     // Update status
@@ -339,6 +343,7 @@ void AceTreeItemPrivate::removeRecord_helper(int seq) {
     // Do change
     d->parent = nullptr;
     records.erase(it);
+    recordIds.erase(seq);
     recordIndexes.remove(item);
 
     // Update status
@@ -438,9 +443,9 @@ AceTreeItem *AceTreeItemPrivate::read_helper(QDataStream &in, bool user) {
             myWarning(__func__) << "read vector item failed";
             goto abort;
         }
-        auto d = child->d_func();
-        d->parent = item;
-        d->status = AceTreeItem::Row;
+        auto d2 = child->d_func();
+        d2->parent = item;
+        d2->status = AceTreeItem::Row;
         d->vector.append(child);
     }
 
@@ -448,6 +453,7 @@ AceTreeItem *AceTreeItemPrivate::read_helper(QDataStream &in, bool user) {
     in >> size;
     d->records.reserve(size);
     d->recordIndexes.reserve(size);
+
     for (int i = 0; i < size; ++i) {
         int seq;
         in >> seq;
@@ -457,13 +463,13 @@ AceTreeItem *AceTreeItemPrivate::read_helper(QDataStream &in, bool user) {
             goto abort;
         }
 
-        auto d = child->d_func();
-        d->parent = item;
-        d->status = AceTreeItem::Record;
+        auto d2 = child->d_func();
+        d2->parent = item;
+        d2->status = AceTreeItem::Record;
         d->records.insert(seq, child);
+        d->recordIds.insert(seq);
         d->recordIndexes.insert(child, seq);
     }
-    in >> d->maxRecordSeq;
 
     // Read set
     in >> size;
@@ -483,9 +489,9 @@ AceTreeItem *AceTreeItemPrivate::read_helper(QDataStream &in, bool user) {
             goto abort;
         }
 
-        auto d = child->d_func();
-        d->parent = item;
-        d->status = AceTreeItem::Element;
+        auto d2 = child->d_func();
+        d2->parent = item;
+        d2->status = AceTreeItem::Element;
         d->set.insert(key, child);
         d->setIndexes.insert(child, key);
     }
@@ -523,7 +529,6 @@ void AceTreeItemPrivate::write_helper(QDataStream &out, bool user) const {
         out << it.key();
         it.value()->d_func()->write_helper(out, user);
     }
-    out << d->maxRecordSeq;
 
     // Write set
     out << d->set.size();
@@ -548,7 +553,9 @@ AceTreeItem *AceTreeItemPrivate::clone_helper(bool user) const {
     d2->vector.reserve(d->vector.size());
     for (auto &child : d->vector) {
         auto newChild = child->d_func()->clone_helper(user);
-        newChild->d_func()->parent = item;
+        auto d3 = newChild->d_func();
+        d3->parent = item;
+        d3->status = AceTreeItem::Row;
 
         d2->vector.append(newChild);
     }
@@ -557,18 +564,22 @@ AceTreeItem *AceTreeItemPrivate::clone_helper(bool user) const {
     d2->recordIndexes.reserve(d->recordIndexes.size());
     for (auto it = d->records.begin(); it != d->records.end(); ++it) {
         auto newChild = it.value()->d_func()->clone_helper(user);
-        newChild->d_func()->parent = item;
+        auto d3 = newChild->d_func();
+        d3->parent = item;
+        d3->status = AceTreeItem::Record;
 
         d2->records.insert(it.key(), newChild);
         d2->recordIndexes.insert(newChild, it.key());
     }
-    d2->maxRecordSeq = d->maxRecordSeq;
+    d2->recordIds = d->recordIds;
 
     d2->set.reserve(d->set.size());
     d2->setIndexes.reserve(d->setIndexes.size());
     for (auto it = d->set.begin(); it != d->set.end(); ++it) {
         auto newChild = it.value()->d_func()->clone_helper(user);
-        newChild->d_func()->parent = item;
+        auto d3 = newChild->d_func();
+        d3->parent = item;
+        d3->status = AceTreeItem::Element;
 
         d2->set.insert(it.key(), newChild);
         d2->setIndexes.insert(newChild, it.key());
@@ -600,9 +611,17 @@ void AceTreeItemPrivate::forceDeleteItem(AceTreeItem *item) {
 }
 
 AceTreeItem::AceTreeItem() : AceTreeItem(*new AceTreeItemPrivate()) {
+#ifdef ENABLE_DEBUG_COUNT
+    item_count++;
+    qDebug() << this << "construct, left" << item_count;
+#endif
 }
 
 AceTreeItem::~AceTreeItem() {
+#ifdef ENABLE_DEBUG_COUNT
+    item_count--;
+    qDebug() << this << "destroy, left" << item_count;
+#endif
 }
 
 AceTreeItem::Status AceTreeItem::status() const {
@@ -887,9 +906,10 @@ int AceTreeItem::addRecord(AceTreeItem *item) {
     if (!d->testInsertable(__func__, item))
         return -1;
 
-    d->model->d_func()->propagate_model(item);
+    if (d->model)
+        d->model->d_func()->propagate_model(item);
 
-    auto seq = ++d->maxRecordSeq;
+    auto seq = d->recordIds.empty() ? 1 : (*d->recordIds.rbegin() + 1);
     d->addRecord_helper(seq, item);
     return seq;
 }
@@ -962,11 +982,6 @@ int AceTreeItem::recordCount() const {
     return d->records.size();
 }
 
-int AceTreeItem::maxRecordSequence() const {
-    Q_D(const AceTreeItem);
-    return d->maxRecordSeq;
-}
-
 bool AceTreeItem::addElement(const QString &key, AceTreeItem *item) {
     Q_D(AceTreeItem);
 
@@ -982,7 +997,8 @@ bool AceTreeItem::addElement(const QString &key, AceTreeItem *item) {
         return false;
     }
 
-    d->model->d_func()->propagate_model(item);
+    if (d->model)
+        d->model->d_func()->propagate_model(item);
 
     d->addElement_helper(key, item);
     return true;

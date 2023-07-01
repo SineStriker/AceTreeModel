@@ -10,12 +10,13 @@
 #include <QFileInfo>
 #include <QTimer>
 
-// #ifdef qDebug
-// #undef qDebug
-// #def ine qDebug \
-//    while (false) \ QMessageLogger(QT_MESSAGELOG_FILE, QT_MESSAGELOG_LINE,
-//     QT_MESSAGELOG_FUNC).debug
-// #endif
+#ifndef ACETREE_ENABLE_DEBUG
+#define myDebug                                                                                    \
+    while (false)                                                                                  \
+    qDebug
+#else
+#define myDebug qDebug
+#endif
 
 #define myWarning(func)                                                                            \
     (qWarning().nospace() << "AceTreeJournalBackend::" << (func) << "():").space()
@@ -162,8 +163,8 @@ QHash<QString, QString> AceTreeJournalBackendPrivate::fs_getAttributes_do(int st
         in.setDevice(file.data());
     }
 
-    qDebug().noquote().nospace() << "[Journal] Read attributes at " << step << " in "
-                                 << QString("%1/journal_%2.dat").arg(dir, QString::number(num));
+    myDebug().noquote().nospace() << "[Journal] Read attributes at " << step << " in "
+                                  << QString("%1/journal_%2.dat").arg(dir, QString::number(num));
 
     auto &dev = *in.device();
     auto pos0 = dev.pos();
@@ -351,7 +352,7 @@ bool AceTreeJournalBackendPrivate::readCheckPoint(QFile &file, AceTreeItem **roo
             // Read root
             root = AceTreeItemPrivate::read_helper(in, false);
             if (!root) {
-                qDebug() << "read item failed";
+                myDebug() << "[Journal] read root failed";
                 return false;
             }
         }
@@ -479,7 +480,7 @@ void AceTreeJournalBackendPrivate::updateStackSize() {
             // Remove tail
             removeEvents(2 * maxSteps, stack.size());
 
-            qDebug().noquote().nospace()
+            myDebug().noquote().nospace()
                 << "[Journal] Remove forward transactions, size=" << size << ", min=" << min
                 << ", current=" << current << ", stack_size=" << stack.size();
         }
@@ -493,7 +494,7 @@ void AceTreeJournalBackendPrivate::updateStackSize() {
         min += maxSteps;
         current -= maxSteps;
 
-        qDebug().noquote().nospace()
+        myDebug().noquote().nospace()
             << "[Journal] Remove backward transactions, size=" << maxSteps << ", min=" << min
             << ", current=" << current << ", stack_size=" << stack.size();
     }
@@ -626,6 +627,12 @@ void AceTreeJournalBackendPrivate::abortForwardReadTask() {
 
 void AceTreeJournalBackendPrivate::extractBackwardJournal(QVector<AceTreeItem *> &removedItems,
                                                           QVector<Tasks::OpsAndAttrs> &data) {
+    int i = 0;
+    for (auto it = data.begin(); it != data.end(); ++it) {
+        myDebug() << min - data.size() + i + 1 << it->operations.first();
+        i++;
+    }
+
     int size = data.size();
 
     // Extrack transactions
@@ -659,6 +666,12 @@ void AceTreeJournalBackendPrivate::extractBackwardJournal(QVector<AceTreeItem *>
 }
 
 void AceTreeJournalBackendPrivate::extractForwardJournal(QVector<Tasks::OpsAndAttrs> &data) {
+    int i = 0;
+    for (auto it = data.begin(); it != data.end(); ++it) {
+        myDebug() << min + current + i + 1 << it->operations.first();
+        i++;
+    }
+
     auto size = data.size();
 
     // Extrack transactions
@@ -721,8 +734,8 @@ void AceTreeJournalBackendPrivate::afterCurrentChange() {
 
             // Insert backward transactions
             if (backward_buf && backward_buf->finished) {
-                qDebug().noquote().nospace() << "[Journal] Prepend backward transactions, size="
-                                             << backward_buf->data.size();
+                myDebug().noquote().nospace() << "[Journal] Prepend backward transactions, size="
+                                              << backward_buf->data.size();
 
                 extractBackwardJournal(backward_buf->removedItems, backward_buf->data);
                 delete backward_buf;
@@ -763,7 +776,7 @@ void AceTreeJournalBackendPrivate::afterCurrentChange() {
 
             // Insert forward transactions
             if (forward_buf && forward_buf->finished) {
-                qDebug().noquote().nospace()
+                myDebug().noquote().nospace()
                     << "[Journal] Append forward transactions, size=" << forward_buf->data.size();
 
                 // Extrack transactions
@@ -1223,7 +1236,7 @@ void AceTreeJournalBackendPrivate::pushTask(Tasks::BaseTask *task, bool unshift)
         worker = new std::thread(&AceTreeJournalBackendPrivate::workerRoutine, this);
     }
 
-    qDebug() << "[Journal] Push task" << task->t;
+    myDebug() << "[Journal] Push task" << task->t;
 }
 
 AceTreeJournalBackend::AceTreeJournalBackend(QObject *parent)
@@ -1356,8 +1369,8 @@ out_fix:
             in >> cur;
 
             if (cur != expected) {
-                qDebug().noquote().nospace() << "[Journal] Journal step inconsistent, expected "
-                                             << expected << ", actual " << cur;
+                myDebug().noquote().nospace() << "[Journal] Journal step inconsistent, expected "
+                                              << expected << ", actual " << cur;
 
                 file.seek(0);
                 in << expected;
@@ -1430,8 +1443,9 @@ out_fix:
     int maxNum = qMax((fsMax - 1) / maxSteps, 0);
     int num = qMin((fsStep + maxSteps / 2 - 1) / maxSteps, maxNum);
 
-    qDebug().noquote().nospace() << "[Journal] Restore, (min, max, cur)=(" << fsMin << ", " << fsMax
-                                 << ", " << fsStep << "), select checkpoint " << num;
+    myDebug().noquote().nospace() << "[Journal] Restore, (min, max, cur)=(" << fsMin << ", "
+                                  << fsMax << ", " << fsStep << ")";
+    myDebug().noquote().nospace() << "[Journal] Read checkpoint " << num;
 
     AceTreeItem *root = nullptr;
     QVector<AceTreeItem *> removedItems;
@@ -1454,7 +1468,7 @@ out_fix:
 
         // Read backward transactions
         if (needBackward) {
-            qDebug().noquote().nospace() << "[Journal] Restore backward transactions " << num - 1;
+            myDebug().noquote().nospace() << "[Journal] Restore backward transactions " << num - 1;
 
             QFile file(QString("%1/journal_%2.dat").arg(dir, QString::number(num - 1)));
             if (!file.open(QIODevice::ReadOnly) ||
@@ -1467,7 +1481,7 @@ out_fix:
     }
 
     if (true) {
-        qDebug().noquote().nospace() << "[Journal] Restore forward transactions " << num;
+        myDebug().noquote().nospace() << "[Journal] Restore forward transactions " << num;
 
         // Read forward transactions
         QFile file(QString("%1/journal_%2.dat").arg(dir, QString::number(num)));
@@ -1524,8 +1538,7 @@ bool AceTreeJournalBackend::switchDir(const QString &dir) {
 
         // Cannot switch to inner directory
         if (innerCanonical.startsWith(outerCanonical)) {
-            qDebug() << innerCanonical << outerCanonical;
-
+            myDebug() << "Parent-child dir:" << innerCanonical << outerCanonical;
             return false;
         }
     }

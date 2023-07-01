@@ -503,8 +503,10 @@ namespace Operations {
             case PropertyChange: {
                 auto op = static_cast<PropertyChangeOp *>(baseOp);
                 auto item = model->itemFromIndex(op->parent);
-                if (!item)
+                if (!item) {
+                    qWarning() << "[Journal] Parent not found" << op;
                     return nullptr;
+                }
                 auto e = new AceTreeValueEvent(AceTreeEvent::PropertyChange, item, op->key,
                                                op->newValue, op->oldValue);
                 res = e;
@@ -513,8 +515,10 @@ namespace Operations {
             case BytesReplace: {
                 auto op = static_cast<BytesReplaceOp *>(baseOp);
                 auto item = model->itemFromIndex(op->parent);
-                if (!item)
+                if (!item) {
+                    qWarning() << "[Journal] Parent not found" << op;
                     return nullptr;
+                }
                 auto e = new AceTreeBytesEvent(AceTreeEvent::BytesReplace, item, op->index,
                                                op->newBytes, op->oldBytes);
                 res = e;
@@ -524,8 +528,10 @@ namespace Operations {
             case BytesRemove: {
                 auto op = static_cast<BytesInsertRemoveOp *>(baseOp);
                 auto item = model->itemFromIndex(op->parent);
-                if (!item)
+                if (!item) {
+                    qWarning() << "[Journal] Parent not found" << op;
                     return nullptr;
+                }
                 auto e = new AceTreeBytesEvent(op->c == BytesInsert ? AceTreeEvent::BytesInsert
                                                                     : AceTreeEvent::BytesRemove,
                                                item, op->index, op->bytes);
@@ -535,8 +541,10 @@ namespace Operations {
             case RowsInsert: {
                 auto op = static_cast<RowsInsertOp *>(baseOp);
                 auto item = model->itemFromIndex(op->parent);
-                if (!item)
+                if (!item) {
+                    qWarning() << "[Journal] Parent not found" << op;
                     return nullptr;
+                }
 
                 QVector<AceTreeItem *> children;
                 if (brief) {
@@ -544,8 +552,10 @@ namespace Operations {
                     children.reserve(op->children.size());
                     for (const auto &id : qAsConst(op->childrenIds)) {
                         auto child = model->itemFromIndex(id);
-                        if (!child)
+                        if (!child) {
+                            qWarning() << "[Journal] Child" << id << "not found" << op;
                             return nullptr;
+                        }
                         children.append(child);
                     }
                 } else {
@@ -587,8 +597,10 @@ namespace Operations {
                 children.reserve(op->children.size());
                 for (const auto &id : qAsConst(op->children)) {
                     auto child = model->itemFromIndex(id);
-                    if (!child)
+                    if (!child) {
+                        qWarning() << "[Journal] Child" << id << "not found" << op;
                         return nullptr;
+                    }
                     children.append(child);
                 }
 
@@ -607,8 +619,10 @@ namespace Operations {
                 if (brief) {
                     // Use brief
                     child = model->itemFromIndex(op->childId);
-                    if (!child)
+                    if (!child) {
+                        qWarning() << "[Journal] Child" << op->childId << "not found" << op;
                         return nullptr;
+                    }
                 } else {
                     // Add child
                     setupItem(op->child);
@@ -630,8 +644,10 @@ namespace Operations {
 
                 // Search children
                 auto child = model->itemFromIndex(op->child);
-                if (!child)
+                if (!child) {
+                    qWarning() << "[Journal] Child" << op->child << "not found" << op;
                     return nullptr;
+                }
 
                 auto e = new AceTreeRecordEvent(AceTreeEvent::RowsRemove, item, op->seq, child);
                 res = e;
@@ -647,8 +663,10 @@ namespace Operations {
                 if (brief) {
                     // Use brief
                     child = model->itemFromIndex(op->childId);
-                    if (!child)
+                    if (!child) {
+                        qWarning() << "[Journal] Child" << op->childId << "not found" << op;
                         return nullptr;
+                    }
                 } else {
                     // Add child
                     setupItem(op->child);
@@ -671,8 +689,10 @@ namespace Operations {
 
                 // Search children
                 auto child = model->itemFromIndex(op->child);
-                if (!child)
+                if (!child) {
+                    qWarning() << "[Journal] Child" << op->child << "not found" << op;
                     return nullptr;
+                }
 
                 auto e = new AceTreeElementEvent(AceTreeEvent::ElementRemove, item, op->key, child);
                 res = e;
@@ -683,8 +703,10 @@ namespace Operations {
                 AceTreeItem *oldRoot = nullptr;
                 if (op->oldRoot != 0) {
                     oldRoot = model->itemFromIndex(op->oldRoot);
-                    if (!oldRoot)
+                    if (!oldRoot) {
+                        qWarning() << "[Journal] Old root" << op->oldRoot << "not found" << op;
                         return nullptr;
+                    }
                 }
 
                 AceTreeItem *newRoot;
@@ -694,8 +716,9 @@ namespace Operations {
                         newRoot = nullptr;
                     } else {
                         newRoot = model->itemFromIndex(op->newRootId);
-                        if (!newRoot)
+                        if (!newRoot) {
                             return nullptr;
+                        }
                     }
                 } else {
                     // Add child
@@ -714,6 +737,244 @@ namespace Operations {
             }
         }
         return res;
+    }
+
+    QDebug operator<<(QDebug debug, BaseOp *baseOp) {
+        if (!baseOp) {
+            debug << "Operations::BaseOp(0x0)";
+            return debug;
+        }
+        switch (baseOp->c) {
+            case PropertyChange: {
+                auto op = static_cast<PropertyChangeOp *>(baseOp);
+                return operator<<(debug, op);
+                break;
+            }
+            case BytesReplace: {
+                auto op = static_cast<BytesReplaceOp *>(baseOp);
+                return operator<<(debug, op);
+                break;
+            }
+            case BytesInsert:
+            case BytesRemove: {
+                auto op = static_cast<BytesInsertRemoveOp *>(baseOp);
+                return operator<<(debug, op);
+                break;
+            }
+            case RowsInsert: {
+                auto op = static_cast<RowsInsertOp *>(baseOp);
+                return operator<<(debug, op);
+                break;
+            }
+            case RowsMove: {
+                auto op = static_cast<RowsMoveOp *>(baseOp);
+                return operator<<(debug, op);
+                break;
+            }
+            case RowsRemove: {
+                auto op = static_cast<RowsRemoveOp *>(baseOp);
+                return operator<<(debug, op);
+                break;
+            }
+            case RecordAdd: {
+                auto op = static_cast<RecordAddOp *>(baseOp);
+                return operator<<(debug, op);
+                break;
+            }
+            case RecordRemove: {
+                auto op = static_cast<RecordRemoveOp *>(baseOp);
+                return operator<<(debug, op);
+                break;
+            }
+            case ElementAdd: {
+                auto op = static_cast<ElementAddOp *>(baseOp);
+                return operator<<(debug, op);
+                break;
+            }
+            case ElementRemove: {
+                auto op = static_cast<ElementRemoveOp *>(baseOp);
+                return operator<<(debug, op);
+                break;
+            }
+            case RootChange: {
+                auto op = static_cast<RootChangeOp *>(baseOp);
+                return operator<<(debug, op);
+            }
+        }
+        return debug;
+    }
+
+    QDebug operator<<(QDebug debug, PropertyChangeOp *op) {
+        if (!op) {
+            debug << "Operations::PropertyChangeOp(0x0)";
+            return debug;
+        }
+        QDebugStateSaver save(debug);
+        debug.nospace() << "Operations::PropertyChangeOp("
+                        << QString::asprintf("%p", op).toStdString().data() //
+                        << ", parent=" << op->parent << ", key=" << op->key //
+                        << ", oldValue=" << op->oldValue                    //
+                        << ", newValue=" << op->newValue                    //
+                        << ")";
+        return debug;
+    }
+    QDebug operator<<(QDebug debug, BytesReplaceOp *op) {
+        if (!op) {
+            debug << "Operations::BytesReplaceOp(0x0)";
+            return debug;
+        }
+        QDebugStateSaver save(debug);
+        debug.nospace() << "Operations::BytesReplaceOp"
+                        << QString::asprintf("%p", op).toStdString().data()      //
+                        << ", (parent=" << op->parent << ", index=" << op->index //
+                        << ", oldBytes=" << op->oldBytes                         //
+                        << ")";
+        return debug;
+    }
+    QDebug operator<<(QDebug debug, BytesInsertRemoveOp *op) {
+        if (!op) {
+            debug << "Operations::BytesInsertRemoveOp(0x0)";
+            return debug;
+        }
+        QDebugStateSaver save(debug);
+        debug.nospace() << "Operations::BytesInsertRemoveOp("
+                        << QString::asprintf("%p", op).toStdString().data()     //
+                        << ", " << (op->c == BytesInsert ? "Insert" : "Remove") //
+                        << ", parent=" << op->parent                            //
+                        << ", index=" << op->index                              //
+                        << ", bytes=" << op->bytes                              //
+                        << ")";
+        return debug;
+    }
+    QDebug operator<<(QDebug debug, RowsInsertOp *op) {
+        if (!op) {
+            debug << "Operations::RowsInsertOp(0x0)";
+            return debug;
+        }
+
+        QStringList children;
+        if (!op->childrenIds.isEmpty()) {
+            for (const auto &id : qAsConst(op->childrenIds)) {
+                children.append(QString::number(id));
+            }
+        } else {
+            for (const auto &child : qAsConst(op->children)) {
+                children.append(QString::number(child->index()));
+            }
+        }
+        QDebugStateSaver save(debug);
+        debug.nospace().noquote() << "Operations::RowsInsertOp("
+                                  << QString::asprintf("%p", op).toStdString().data() //
+                                  << ", parent=" << op->parent                        //
+                                  << ", index=" << op->index                          //
+                                  << ", ids=[" << children.join(",")                  //
+                                  << "])";
+        return debug;
+    }
+    QDebug operator<<(QDebug debug, RowsMoveOp *op) {
+        if (!op) {
+            debug << "Operations::RowsMoveOp(0x0)";
+            return debug;
+        }
+
+        QDebugStateSaver save(debug);
+        debug.nospace() << "Operations::RowsMoveOp("
+                        << QString::asprintf("%p", op).toStdString().data() //
+                        << ", parent=" << op->parent                        //
+                        << ", index=" << op->index                          //
+                        << ", count=" << op->count                          //
+                        << ", dest=" << op->dest                            //
+                        << ")";
+        return debug;
+    }
+    QDebug operator<<(QDebug debug, RowsRemoveOp *op) {
+        if (!op) {
+            debug << "Operations::RowsRemoveOp(0x0)";
+            return debug;
+        }
+
+        QDebugStateSaver save(debug);
+        debug.nospace() << "Operations::RowsRemoveOp("
+                        << QString::asprintf("%p", op).toStdString().data() //
+                        << ", parent=" << op->parent                        //
+                        << ", index=" << op->index                          //
+                        << ", count=" << op->children.size()                //
+                        << ")";
+        return debug;
+    }
+    QDebug operator<<(QDebug debug, RecordAddOp *op) {
+        if (!op) {
+            debug << "Operations::RowsRemoveOp(0x0)";
+            return debug;
+        }
+
+        QDebugStateSaver save(debug);
+        debug.nospace() << "Operations::RecordAddOp("
+                        << QString::asprintf("%p", op).toStdString().data()                //
+                        << ", parent=" << op->parent                                       //
+                        << ", seq=" << op->seq                                             //
+                        << ", id=" << (op->childId > 0 ? op->childId : op->child->index()) //
+                        << ")";
+        return debug;
+    }
+    QDebug operator<<(QDebug debug, RecordRemoveOp *op) {
+        if (!op) {
+            debug << "Operations::RowsRemoveOp(0x0)";
+            return debug;
+        }
+
+        QDebugStateSaver save(debug);
+        debug.nospace() << "Operations::RecordRemoveOp("
+                        << QString::asprintf("%p", op).toStdString().data() //
+                        << ", parent=" << op->parent                        //
+                        << ", seq=" << op->seq                              //
+                        << ", id=" << op->child                             //
+                        << ")";
+        return debug;
+    }
+    QDebug operator<<(QDebug debug, ElementAddOp *op) {
+        if (!op) {
+            debug << "Operations::ElementAddOp(0x0)";
+            return debug;
+        }
+
+        QDebugStateSaver save(debug);
+        debug.nospace() << "Operations::ElementAddOp("
+                        << QString::asprintf("%p", op).toStdString().data()                //
+                        << ", parent=" << op->parent                                       //
+                        << ", key=" << op->key                                             //
+                        << ", id=" << (op->childId > 0 ? op->childId : op->child->index()) //
+                        << ")";
+        return debug;
+    }
+    QDebug operator<<(QDebug debug, ElementRemoveOp *op) {
+        if (!op) {
+            debug << "Operations::ElementRemoveOp(0x0)";
+            return debug;
+        }
+
+        QDebugStateSaver save(debug);
+        debug.nospace() << "Operations::ElementRemoveOp("
+                        << QString::asprintf("%p", op).toStdString().data() //
+                        << ", parent=" << op->parent                        //
+                        << ", key=" << op->key                              //
+                        << ", id=" << op->child                             //
+                        << ")";
+        return debug;
+    }
+    QDebug operator<<(QDebug debug, RootChangeOp *op) {
+        if (!op) {
+            debug << "Operations::RootChangeOp(0x0)";
+            return debug;
+        }
+
+        QDebugStateSaver save(debug);
+        debug.nospace() << "Operations::RootChangeOp("
+                        << QString::asprintf("%p", op).toStdString().data()                     //
+                        << ", oldRoot=" << op->oldRoot                                          //
+                        << ", newRoot=" << (op->newRoot ? op->newRoot->index() : op->newRootId) //
+                        << ")";
+        return debug;
     }
 
 } // namespace Operations

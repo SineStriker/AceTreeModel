@@ -143,7 +143,8 @@ void AceTreeNumbersEntityPrivate::event(AceTreeEvent *event) {
     }
 }
 
-AceTreeNumbersEntity::AceTreeNumbersEntity(QObject *parent) : AceTreeEntity(nullptr, parent) {
+AceTreeNumbersEntity::AceTreeNumbersEntity(QObject *parent)
+    : AceTreeNumbersEntity(nullptr, parent) {
 }
 
 AceTreeNumbersEntity::AceTreeNumbersEntity(AceTreeEntityExtra *extra, QObject *parent)
@@ -197,6 +198,12 @@ void AceTreeNumbersEntity::initType(int type_size, QByteArray (*arr_to_bytes)(co
     d->type_size = type_size;
     d->arr_to_bytes = arr_to_bytes;
     d->bytes_to_arr = bytes_to_arr;
+}
+
+void AceTreeNumbersEntity::doInitialize() {
+}
+
+void AceTreeNumbersEntity::doSetup() {
 }
 
 namespace AceTreePrivate {

@@ -130,8 +130,7 @@ bool AceTreeEntity::removeChild(AceTreeEntity *child) {
     Q_D(AceTreeEntity);
     auto it = d->children.find(child);
     if (it == d->children.end()) {
-        qWarning() << "AceTreeEntity::removeChild(): entity" << child << "doesn't belong to"
-                   << this;
+        qWarning() << "AceTreeEntity::removeChild(): entity" << child << "doesn't belong to" << this;
         return false;
     }
     childAboutToRemove(child);
@@ -146,11 +145,16 @@ AceTreeEntity *AceTreeEntity::itemToEntity(AceTreeItem *item) {
     return AceTreeItemPrivate::get(item)->entity;
 }
 
+AceTreeItem *AceTreeEntity::treeItem() const {
+    Q_D(const AceTreeEntity);
+    return d->m_treeItem;
+}
+
 void AceTreeEntity::childAdded(AceTreeEntity *child) {
     Q_UNUSED(child) //
 }
 
-void AceTreeEntity::childAboutToRemove(AceTreeEntity *child) {
+void AceTreeEntity::childAboutToRemove(AceTreeEntity *child){
     Q_UNUSED(child) //
 }
 
@@ -159,11 +163,6 @@ AceTreeEntity::AceTreeEntity(AceTreeEntityPrivate &d, QObject *parent)
     d.q_ptr = this;
 
     d.init();
-}
-
-AceTreeItem *AceTreeEntity::treeItem() const {
-    Q_D(const AceTreeEntity);
-    return d->m_treeItem;
 }
 
 AceTreeEntityExtra *AceTreeEntity::extra() const {
@@ -201,11 +200,10 @@ void AceTreeEntityExtra::setup(AceTreeEntity *entity) {
     Q_UNUSED(entity)
 }
 
-void AceTreeEntityExtra::event(AceTreeEvent *event) {
-    Q_UNUSED(event)
-}
+void AceTreeEntityExtra::event(AceTreeEvent *event){Q_UNUSED(event)}
 
-AceTreeEntityExtra::AceTreeEntityExtra(AceTreeEntityExtraPrivate &d) : d_ptr(&d) {
+AceTreeEntityExtra::AceTreeEntityExtra(AceTreeEntityExtraPrivate &d)
+    : d_ptr(&d) {
     d.init();
 }
 
@@ -216,8 +214,8 @@ AceTreeEntityNotifyExtra::AceTreeEntityNotifyExtra()
 AceTreeEntityNotifyExtra::~AceTreeEntityNotifyExtra() {
 }
 
-void AceTreeEntityNotifyExtra::addDynamicDataNotifier(
-    const QString &key, const AceTreeEntityNotifyExtra::Notifier &notifier) {
+void AceTreeEntityNotifyExtra::addDynamicDataNotifier(const QString &key,
+                                                      const AceTreeEntityNotifyExtra::Notifier &notifier) {
     Q_D(AceTreeEntityNotifyExtra);
     d->dynamicPropertyNotifiers.insert(key, notifier);
 }
@@ -227,8 +225,8 @@ void AceTreeEntityNotifyExtra::removeDynamicDataNotifier(const QString &key) {
     d->dynamicPropertyNotifiers.remove(key);
 }
 
-void AceTreeEntityNotifyExtra::addPropertyNotifier(
-    const QString &key, const AceTreeEntityNotifyExtra::Notifier &notifier) {
+void AceTreeEntityNotifyExtra::addPropertyNotifier(const QString &key,
+                                                   const AceTreeEntityNotifyExtra::Notifier &notifier) {
     Q_D(AceTreeEntityNotifyExtra);
     d->propertyNotifiers.insert(key, notifier);
 }
@@ -262,6 +260,5 @@ void AceTreeEntityNotifyExtra::event(AceTreeEvent *event) {
     }
 }
 
-AceTreeEntityNotifyExtra::AceTreeEntityNotifyExtra(AceTreeEntityNotifyExtraPrivate &d)
-    : AceTreeEntityExtra(d) {
+AceTreeEntityNotifyExtra::AceTreeEntityNotifyExtra(AceTreeEntityNotifyExtraPrivate &d) : AceTreeEntityExtra(d) {
 }

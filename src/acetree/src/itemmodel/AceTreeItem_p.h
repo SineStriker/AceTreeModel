@@ -1,6 +1,8 @@
 #ifndef ACETREEITEM_P_H
 #define ACETREEITEM_P_H
 
+#include <set>
+
 #include "AceTreeEvent.h"
 #include "AceTreeItem.h"
 
@@ -15,6 +17,7 @@ public:
     void init();
 
     AceTreeItem *q_ptr;
+    bool is_clearing;
 
     AceTreeItem::Status status;
     bool m_managed;
@@ -31,8 +34,8 @@ public:
     QVector<AceTreeItem *> vector;
     QHash<int, AceTreeItem *> records;
     QHash<QString, AceTreeItem *> set;
-    int maxRecordSeq;
 
+    std::set<int> recordIds;
     QHash<AceTreeItem *, int> recordIndexes;
     QHash<AceTreeItem *, QString> setIndexes;
 

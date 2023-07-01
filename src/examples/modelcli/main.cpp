@@ -1,8 +1,10 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QDir>
+#include <QRegularExpression>
 #include <QStack>
 #include <QTextStream>
+#include <QThread>
 
 #include <thread>
 
@@ -15,14 +17,14 @@ static AceTreeJournalBackend *backend;
 
 static const char *help_display[] = {
     "Control Commands:",
-    "    help                               Show this help",
+    "    help      [cmd]                    Show this help",
     "    exit/quit                          Exit",
     "    cls/clear                          Clear screen",
     "",
     "Model Commands:",
     "    new                                Create new item (Return negative temp id)",
     "    del       <id>                     Remove item (Negative id only)",
-    "    show/ls   <id>                     Show item",
+    "    show/ls   <id> [level]             Show item",
     "    rid                                Show root id",
     "    temp                               Show all temp items' id",
     "    steps                              Show step information",
@@ -65,6 +67,16 @@ static const char *help_display[] = {
     "    setr   <id>                        Set root item",
 };
 
+static QString findHelp(const QString &cmd) {
+    for (const auto &line : help_display) {
+        QRegularExpression re(QString(R"([\s\s+|/]%1[\s\s+|/])").arg(cmd));
+        if (re.match(line).hasMatch()) {
+            return QString(line).trimmed();
+        }
+    }
+    return "";
+}
+
 static QStringList parseCommand(const QString &command) {
     QStringList result;
 
@@ -94,12 +106,16 @@ static QStringList parseCommand(const QString &command) {
 }
 
 
-static void showItem(AceTreeItem *item, int indent, const char *prefix = nullptr) {
-    std::string indent_str(indent, ' ');
+static void showItem(AceTreeItem *item, int level, int maxLevel, const char *prefix = nullptr) {
+    std::string indent_str(level * 2, ' ');
     if (prefix) {
         qDebug().noquote().nospace() << indent_str.c_str() << prefix;
     }
     qDebug().noquote().nospace() << indent_str.c_str() << "id: " << item->index();
+    if (maxLevel > 0 && level == maxLevel) {
+        return;
+    }
+
     if (item->bytesSize() > 0) {
         qDebug().noquote().nospace() << indent_str.c_str() << "bytes: " << item->bytes();
     }
@@ -112,13 +128,13 @@ static void showItem(AceTreeItem *item, int indent, const char *prefix = nullptr
         }
     }
 
-    indent += 2;
+    level += 1;
     auto rows = item->rows();
     if (!rows.isEmpty()) {
         qDebug().noquote().nospace() << indent_str.c_str() << "rows: ";
         int i = 0;
         for (const auto &child : qAsConst(rows)) {
-            showItem(child, indent,
+            showItem(child, level, maxLevel,
                      QString("index: %1").arg(QString::number(i++)).toStdString().c_str());
             qDebug().noquote().nospace() << indent_str.c_str() << "  --------";
         }
@@ -127,7 +143,7 @@ static void showItem(AceTreeItem *item, int indent, const char *prefix = nullptr
     if (!recs.isEmpty()) {
         qDebug().noquote().nospace() << indent_str.c_str() << "records: ";
         for (auto it = recs.begin(); it != recs.end(); ++it) {
-            showItem(it.value(), indent,
+            showItem(it.value(), level, maxLevel,
                      QString("seq: %1").arg(QString::number(it.key())).toStdString().c_str());
             qDebug().noquote().nospace() << indent_str.c_str() << "  --------";
         }
@@ -136,7 +152,8 @@ static void showItem(AceTreeItem *item, int indent, const char *prefix = nullptr
     if (!eles.isEmpty()) {
         qDebug().noquote().nospace() << indent_str.c_str() << "elements: ";
         for (auto it = eles.begin(); it != eles.end(); ++it) {
-            showItem(it.value(), indent, QString("key: %1").arg(it.key()).toStdString().c_str());
+            showItem(it.value(), level, maxLevel,
+                     QString("key: %1").arg(it.key()).toStdString().c_str());
             qDebug().noquote().nospace() << indent_str.c_str() << "  --------";
         }
     }
@@ -170,6 +187,8 @@ static void cli() {
     };
 
     do {
+        QThread::usleep(50000);
+
         printf("> ");
 
         line = inputStream.readLine();
@@ -182,8 +201,9 @@ static void cli() {
         auto cmd = list.front();
 
 #define ENSURE_SIZE(count)                                                                         \
-    if (list.size() != count) {                                                                    \
+    if (list.size() < count) {                                                                     \
         qDebug() << "Invalid use of command" << cmd;                                               \
+        qDebug().noquote().nospace() << "  " << findHelp(cmd);                                     \
         continue;                                                                                  \
     }
 
@@ -196,6 +216,10 @@ static void cli() {
 
         // Help
         if (cmd == "help") {
+            if (list.size() > 1) {
+                qDebug().noquote().nospace() << "  " << findHelp(list.at(1));
+                continue;
+            }
             for (const auto &s : help_display) {
                 qDebug() << s;
             }
@@ -249,7 +273,7 @@ static void cli() {
             auto id = list.at(1).toInt();
             GET_ITEM(id);
 
-            showItem(item, 0);
+            showItem(item, 0, list.size() > 2 ? list.at(2).toInt() : 0);
             continue;
         }
 
@@ -362,7 +386,7 @@ static void cli() {
             GET_ITEM(id);
             auto map = item->propertyMap();
             for (auto it = map.begin(); it != map.end(); ++it) {
-                qDebug().nospace().noquote() << "  " << it.key() << ": " << it.value();
+                qDebug().nospace().noquote() << "  " << it.key() << ": " << it.value().toString();
             }
             continue;
         }
@@ -438,6 +462,15 @@ static void cli() {
             return children;
         };
 
+        auto showChildIds = [](const QVector<AceTreeItem *> &children) {
+            QStringList ids;
+            ids.reserve(children.size());
+            for (const auto &child : qAsConst(children)) {
+                ids.append(QString::number(child->index()));
+            }
+            qDebug().noquote().nospace() << "ids: " << ids.join(", ");
+        };
+
         // insr
         if (cmd == "insr") {
             ENSURE_SIZE(4);
@@ -450,6 +483,8 @@ static void cli() {
                 continue;
 
             if (tx(item->index() > 0, [&]() { return item->insertRows(index, children); })) {
+                if (item->index() > 0)
+                    showChildIds(children);
                 filterItems();
             }
             continue;
@@ -466,6 +501,8 @@ static void cli() {
                 continue;
 
             if (tx(item->index() > 0, [&]() { return item->appendRows(children); })) {
+                if (item->index() > 0)
+                    showChildIds(children);
                 filterItems();
             }
             continue;
@@ -482,6 +519,8 @@ static void cli() {
                 continue;
 
             if (tx(item->index() > 0, [&]() { return item->prependRows(children); })) {
+                if (item->index() > 0)
+                    showChildIds(children);
                 filterItems();
             }
             continue;
@@ -563,13 +602,16 @@ static void cli() {
                 model->beginTransaction();
 
             auto seq = item->addRecord(child);
-            if (seq > 0) {
+            if (seq >= 0) {
                 filterItems();
             }
             qDebug() << seq;
 
-            if (item->index() > 0)
+            if (item->index() > 0) {
+                if (seq >= 0)
+                    showChildIds({child});
                 model->commitTransaction();
+            }
             continue;
         }
 
@@ -643,6 +685,8 @@ static void cli() {
             }
 
             if (tx(item->index() > 0, [&]() { return item->addElement(key, child); })) {
+                if (item->index() > 0)
+                    showChildIds({child});
                 filterItems();
             }
             continue;
@@ -703,6 +747,7 @@ static void cli() {
             GET_ITEM(id);
 
             if (tx(true, [&]() { return model->setRootItem(item); })) {
+                showChildIds({item});
                 filterItems();
             }
             continue;

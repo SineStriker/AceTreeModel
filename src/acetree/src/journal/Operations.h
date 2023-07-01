@@ -1,6 +1,7 @@
 #ifndef OPERATIONS_H
 #define OPERATIONS_H
 
+#include <QDebug>
 #include <QObject>
 
 #include "AceTreeEvent.h"
@@ -200,6 +201,19 @@ namespace Operations {
 
     // Will move all tree items from op to model, the op can be deleted later
     AceTreeEvent *fromOp(BaseOp *baseOp, AceTreeModel *model, bool brief);
+
+    QDebug operator<<(QDebug debug, BaseOp *baseOp);
+    QDebug operator<<(QDebug debug, PropertyChangeOp *op);
+    QDebug operator<<(QDebug debug, BytesReplaceOp *op);
+    QDebug operator<<(QDebug debug, BytesInsertRemoveOp *op);
+    QDebug operator<<(QDebug debug, RowsInsertOp *op);
+    QDebug operator<<(QDebug debug, RowsMoveOp *op);
+    QDebug operator<<(QDebug debug, RowsRemoveOp *op);
+    QDebug operator<<(QDebug debug, RecordAddOp *op);
+    QDebug operator<<(QDebug debug, RecordRemoveOp *op);
+    QDebug operator<<(QDebug debug, ElementAddOp *op);
+    QDebug operator<<(QDebug debug, ElementRemoveOp *op);
+    QDebug operator<<(QDebug debug, RootChangeOp *op);
 
 } // namespace Operations
 

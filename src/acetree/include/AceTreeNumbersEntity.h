@@ -29,6 +29,10 @@ protected:
     void initType(int type_size, QByteArray (*arr_to_bytes)(const QJsonArray &),
                   QJsonArray (*bytes_to_arr)(const QByteArray &));
 
+protected:
+    void doInitialize() override;
+    void doSetup() override;
+
 private:
     static AceTreeNumbersEntity *get_entity_helper(const void *ptr);
 
@@ -78,7 +82,7 @@ AceTreeEntityNumbersHelper<T>::AceTreeEntityNumbersHelper() {
         },
         [](const QByteArray &bytes) -> QJsonArray {
             QJsonArray arr;
-            auto begin = reinterpret_cast<const T *>(bytes);
+            auto begin = reinterpret_cast<const T *>(bytes.constData());
             auto end = begin + (bytes.size() / int(sizeof(T)));
             for (auto it = begin; it != end; ++it) {
                 arr.append(static_cast<double>(*it));
@@ -98,12 +102,14 @@ QVector<T> AceTreeEntityNumbersHelper<T>::mid(int index, int size) const {
         return {};
     }
     size = qMin(this->size() - index, size);
-    return {to_entity()->valuesImpl() + index * int(sizeof(T)), size * int(sizeof(T))};
+    auto data = reinterpret_cast<const T *>(to_entity()->valuesImpl()) + index;
+    return {data, data + size};
 }
 
 template <class T>
 QVector<T> AceTreeEntityNumbersHelper<T>::values() const {
-    return {to_entity()->valuesImpl(), size()};
+    auto data = reinterpret_cast<const T *>(to_entity()->valuesImpl());
+    return {data, data + size()};
 }
 
 template <class T>

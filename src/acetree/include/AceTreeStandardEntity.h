@@ -68,10 +68,9 @@ protected:
     bool removeRecord(int seq);
     bool removeRecord(AceTreeEntity *entity);
     AceTreeEntity *record(int seq) const;
-    int recordIndexOf(AceTreeEntity *entity) const;
+    int recordSequenceOf(AceTreeEntity *entity) const;
     QList<int> records() const;
     int recordCount() const;
-    int maxRecordSeq() const;
 
     bool containsElement(AceTreeEntity *entity) const;
     QList<AceTreeEntity *> elements() const;
@@ -208,8 +207,7 @@ inline QJsonValue AceTreeStandardSchema::attributeSpec(const QString &key) const
     return propertySpec(key);
 }
 
-inline void AceTreeStandardSchema::setAttributeSpec(const QString &key,
-                                                    const QJsonValue &defaultValue) {
+inline void AceTreeStandardSchema::setAttributeSpec(const QString &key, const QJsonValue &defaultValue) {
     setPropertySpec(key, defaultValue);
 }
 
@@ -302,11 +300,11 @@ private:
     AceTreeStandardEntity *to_entity();
 };
 
-#define ACE_TREE_DECLARE_VECTOR_SIGNALS(T)                                                         \
-    void inserted(int index, const QVector<T *> &items);                                           \
-    void aboutToMove(int index, int count, int dest);                                              \
-    void moved(int index, int count, int dest);                                                    \
-    void aboutToRemove(int index, const QVector<T *> &items);                                      \
+#define ACE_TREE_DECLARE_VECTOR_SIGNALS(T)                                                                             \
+    void inserted(int index, const QVector<T *> &items);                                                               \
+    void aboutToMove(int index, int count, int dest);                                                                  \
+    void moved(int index, int count, int dest);                                                                        \
+    void aboutToRemove(int index, const QVector<T *> &items);                                                          \
     void removed(int index, int count);
 
 template <class T>
@@ -329,9 +327,9 @@ private:
     AceTreeStandardEntity *to_entity();
 };
 
-#define ACE_TREE_DECLARE_RECORD_TABLE_SIGNALS(T)                                                   \
-    void inserted(int seq, T *item);                                                               \
-    void aboutToRemove(int seq, T *item);                                                          \
+#define ACE_TREE_DECLARE_RECORD_TABLE_SIGNALS(T)                                                                       \
+    void inserted(int seq, T *item);                                                                                   \
+    void aboutToRemove(int seq, T *item);                                                                              \
     void removed(int seq);
 
 template <class T>
@@ -497,14 +495,12 @@ public:
 
     template <class T>
     void addChildPointer(const QString &key, T *&ptr) {
-        static_assert(std::is_base_of<AceTreeEntity, T>::value,
-                      "T should inherit from AceTreeEntity");
-        addChildPointer_internal(key, [ptr](AceTreeEntity *item) { ptr = static_cast<T *>(item); });
+        static_assert(std::is_base_of<AceTreeEntity, T>::value, "T should inherit from AceTreeEntity");
+        addChildPointer_internal(key, [ptr](AceTreeEntity *item) mutable { ptr = static_cast<T *>(item); });
     }
 
 private:
-    void addChildPointer_internal(const QString &key,
-                                  const std::function<void(AceTreeEntity *)> &callback);
+    void addChildPointer_internal(const QString &key, const std::function<void(AceTreeEntity *)> &callback);
 
     friend class AceTreeEntityMapping;
 };

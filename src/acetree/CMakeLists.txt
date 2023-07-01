@@ -13,6 +13,10 @@ endif()
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE ACETREE_LIBRARY)
 
+if(ACETREE_ENABLE_DEBUG)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE ACETREE_ENABLE_DEBUG)
+endif()
+
 # Add source files
 file(GLOB_RECURSE _headers include/*.h)
 file(GLOB_RECURSE _sources src/*.h src/*.cpp)
@@ -31,7 +35,6 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     src/entity
     src/itemmodel
     src/serialization
-    src/tools
     src/widgets
     include/io
 )

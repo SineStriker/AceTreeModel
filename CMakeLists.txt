@@ -11,6 +11,7 @@ option(ACETREE_BUILD_TESTS "Build test cases" on)
 option(ACETREE_BUILD_EXAMPLES "Build example targets" on)
 option(ACETREE_BUILD_TOOLS "Build acetree tools" on)
 option(ACETREE_INSTALL "Add install target" on)
+option(ACETREE_ENABLE_DEBUG "Enable debug output" on)
 
 # CMake Configurations
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
