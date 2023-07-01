@@ -11,8 +11,9 @@ public:
 
     void init();
 
-    AceTreeEntityExtra *extra;
     AceTreeEntity *q_ptr;
+    AceTreeEntityExtra *extra;
+    bool is_clearing;
 
     AceTreeItem *m_treeItem;
 

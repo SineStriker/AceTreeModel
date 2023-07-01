@@ -6,6 +6,7 @@
 AceTreeEntityPrivate::AceTreeEntityPrivate(AceTreeEntityExtra *extra) : extra(extra) {
     m_treeItem = nullptr;
     parent = nullptr;
+    is_clearing = false;
 }
 
 AceTreeEntityPrivate::~AceTreeEntityPrivate() {
@@ -35,7 +36,9 @@ AceTreeEntity::AceTreeEntity(AceTreeEntityExtra *extra, QObject *parent)
 
 AceTreeEntity::~AceTreeEntity() {
     Q_D(AceTreeEntity);
-    if (d->parent)
+    d->is_clearing = true;
+
+    if (d->parent && !d->parent->d_func()->is_clearing)
         d->parent->removeChild(this);
 
     auto &treeItem = d->m_treeItem;
@@ -47,8 +50,8 @@ AceTreeEntity::~AceTreeEntity() {
     }
 
     for (const auto &child : qAsConst(d->children)) {
-        if (!child->parent())
-            delete child;
+        child->d_func()->parent = nullptr;
+        delete child;
     }
 }
 

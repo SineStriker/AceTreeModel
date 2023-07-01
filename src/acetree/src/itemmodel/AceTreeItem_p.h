@@ -35,7 +35,7 @@ public:
     QHash<int, AceTreeItem *> records;
     QHash<QString, AceTreeItem *> set;
 
-    std::set<int> recordIds;
+    std::set<int> recordIds; // To preserve max seq
     QHash<AceTreeItem *, int> recordIndexes;
     QHash<AceTreeItem *, QString> setIndexes;
 
@@ -84,6 +84,7 @@ public:
     static inline bool executeEvent(AceTreeEvent *event, bool undo) {
         return event->execute(undo);
     }
+    
     static inline void cleanEvent(AceTreeEvent *event) {
         event->clean();
     }

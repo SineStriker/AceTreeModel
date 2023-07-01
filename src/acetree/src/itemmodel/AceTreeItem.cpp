@@ -40,7 +40,6 @@ QDebug operator<<(QDebug debug, AceTreeItem *item) {
 
 // Item
 AceTreeItemPrivate::AceTreeItemPrivate() {
-
     is_clearing = false;
     status = AceTreeItem::Root;
     m_managed = false;
@@ -446,6 +445,7 @@ AceTreeItem *AceTreeItemPrivate::read_helper(QDataStream &in, bool user) {
         auto d2 = child->d_func();
         d2->parent = item;
         d2->status = AceTreeItem::Row;
+
         d->vector.append(child);
     }
 
@@ -466,6 +466,7 @@ AceTreeItem *AceTreeItemPrivate::read_helper(QDataStream &in, bool user) {
         auto d2 = child->d_func();
         d2->parent = item;
         d2->status = AceTreeItem::Record;
+
         d->records.insert(seq, child);
         d->recordIds.insert(seq);
         d->recordIndexes.insert(child, seq);
@@ -492,6 +493,7 @@ AceTreeItem *AceTreeItemPrivate::read_helper(QDataStream &in, bool user) {
         auto d2 = child->d_func();
         d2->parent = item;
         d2->status = AceTreeItem::Element;
+        
         d->set.insert(key, child);
         d->setIndexes.insert(child, key);
     }
