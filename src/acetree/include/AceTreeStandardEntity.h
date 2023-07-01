@@ -320,7 +320,6 @@ public:
     QList<int> indexes() const;
     int size() const;
     int count() const;
-    int maxIndex() const;
 
 private:
     const AceTreeStandardEntity *to_entity() const;
@@ -465,11 +464,6 @@ int AceTreeEntityRecordTableHelper<T>::size() const {
 template <class T>
 int AceTreeEntityRecordTableHelper<T>::count() const {
     return size();
-}
-
-template <class T>
-int AceTreeEntityRecordTableHelper<T>::maxIndex() const {
-    return to_entity()->maxRecordSeq();
 }
 
 template <class T>
