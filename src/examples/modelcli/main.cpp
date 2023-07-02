@@ -11,6 +11,8 @@
 #include <AceTreeJournalBackend.h>
 #include <AceTreeModel.h>
 
+static bool no_prompt;
+
 static AceTreeModel *model;
 
 static AceTreeJournalBackend *backend;
@@ -123,7 +125,8 @@ static void showItem(AceTreeItem *item, int level, int maxLevel, const char *pre
     if (!props.isEmpty()) {
         qDebug().noquote().nospace() << indent_str.c_str() << "properties: ";
         for (auto it = props.begin(); it != props.end(); ++it) {
-            qDebug().nospace().noquote() << indent_str.c_str() << "  " << it.key() << ": " << it.value().toString();
+            qDebug().nospace().noquote()
+                << indent_str.c_str() << "  " << it.key() << ": " << it.value().toString();
         }
     }
 
@@ -133,7 +136,8 @@ static void showItem(AceTreeItem *item, int level, int maxLevel, const char *pre
         qDebug().noquote().nospace() << indent_str.c_str() << "rows: ";
         int i = 0;
         for (const auto &child : qAsConst(rows)) {
-            showItem(child, level, maxLevel, QString("index: %1").arg(QString::number(i++)).toStdString().c_str());
+            showItem(child, level, maxLevel,
+                     QString("index: %1").arg(QString::number(i++)).toStdString().c_str());
             qDebug().noquote().nospace() << indent_str.c_str() << "  --------";
         }
     }
@@ -150,7 +154,8 @@ static void showItem(AceTreeItem *item, int level, int maxLevel, const char *pre
     if (!eles.isEmpty()) {
         qDebug().noquote().nospace() << indent_str.c_str() << "elements: ";
         for (auto it = eles.begin(); it != eles.end(); ++it) {
-            showItem(it.value(), level, maxLevel, QString("key: %1").arg(it.key()).toStdString().c_str());
+            showItem(it.value(), level, maxLevel,
+                     QString("key: %1").arg(it.key()).toStdString().c_str());
             qDebug().noquote().nospace() << indent_str.c_str() << "  --------";
         }
     }
@@ -186,7 +191,8 @@ static void cli() {
     do {
         // QThread::usleep(50000);
 
-        printf("> ");
+        if (!no_prompt)
+            printf("> ");
 
         line = inputStream.readLine();
 
@@ -197,18 +203,18 @@ static void cli() {
 
         auto cmd = list.front();
 
-#define ENSURE_SIZE(count)                                                                                             \
-    if (list.size() < count) {                                                                                         \
-        qDebug() << "Invalid use of command" << cmd;                                                                   \
-        qDebug().noquote().nospace() << "  " << findHelp(cmd);                                                         \
-        continue;                                                                                                      \
+#define ENSURE_SIZE(count)                                                                         \
+    if (list.size() < count) {                                                                     \
+        qDebug() << "Invalid use of command" << cmd;                                               \
+        qDebug().noquote().nospace() << "  " << findHelp(cmd);                                     \
+        continue;                                                                                  \
     }
 
-#define GET_ITEM(id)                                                                                                   \
-    auto item = getItem(id);                                                                                           \
-    if (!item) {                                                                                                       \
-        qDebug() << "Item" << id << "not found";                                                                       \
-        continue;                                                                                                      \
+#define GET_ITEM(id)                                                                               \
+    auto item = getItem(id);                                                                       \
+    if (!item) {                                                                                   \
+        qDebug() << "Item" << id << "not found";                                                   \
+        continue;                                                                                  \
     }
 
         // Help
@@ -353,9 +359,7 @@ static void cli() {
                 qDebug() << "Failed";
             }
             if (tx)
-                model->commitTransaction({
-                    {"num", QString::number(model->maxStep())}
-                });
+                model->commitTransaction({{"num", QString::number(model->maxStep())}});
 
             return res;
         };
@@ -607,10 +611,11 @@ static void cli() {
                 model->beginTransaction();
 
             auto seq = item->addRecord(child);
+            qDebug() << seq;
             if (seq >= 0) {
                 filterItems();
+                qDebug() << "OK";
             }
-            qDebug() << seq;
 
             if (item->index() > 0) {
                 if (seq >= 0)
@@ -764,6 +769,8 @@ static void cli() {
 
 int main(int argc, char *argv[]) {
     QCoreApplication a(argc, argv);
+
+    no_prompt = a.arguments().contains("--no-prompt");
 
     backend = new AceTreeJournalBackend();
 

@@ -1,3 +1,8 @@
+if(ACETREE_INSTALL)
+    include(GNUInstallDirs)
+    include(CMakePackageConfigHelpers)
+endif()
+
 # Add library
 find_package(QT NAMES Qt6 Qt5 COMPONENTS Core REQUIRED)
 find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Core REQUIRED)
@@ -21,9 +26,6 @@ endif()
 
 # Install
 if(ACETREE_INSTALL)
-    include(GNUInstallDirs)
-    include(CMakePackageConfigHelpers)
-
     # Add install target
     set(_install_dir ${CMAKE_INSTALL_LIBDIR}/cmake/${ACETREE_INSTALL_NAME})
 
