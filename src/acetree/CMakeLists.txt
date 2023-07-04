@@ -17,6 +17,10 @@ if(ACETREE_ENABLE_DEBUG)
     target_compile_definitions(${PROJECT_NAME} PRIVATE ACETREE_ENABLE_DEBUG)
 endif()
 
+if(NOT WIN32)
+    target_link_libraries(${PROJECT_NAME} PRIVATE pthread)
+endif()
+
 # Add source files
 file(GLOB_RECURSE _headers include/*.h)
 file(GLOB_RECURSE _sources src/*.h src/*.cpp)

@@ -5,6 +5,8 @@
 #include "AceTreeItem_p.h"
 #include "AceTreeModel_p.h"
 
+#include "serialization/serialize_size_t.h"
+
 namespace Operations {
 
     static const char SIGN_OP[] = "SEG ";

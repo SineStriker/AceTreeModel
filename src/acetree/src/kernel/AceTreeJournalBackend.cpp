@@ -4,6 +4,8 @@
 #include "AceTreeItem_p.h"
 #include "AceTreeModel_p.h"
 
+#include "serialization/serialize_size_t.h"
+
 #include <QDataStream>
 #include <QDebug>
 #include <QDir>
@@ -876,10 +878,10 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                             QString("%1/journal_%2.dat").arg(dir, QString::number(txNum)));
 
                         auto exists = file.exists();
-                        file.open(QIODevice::ReadWrite | QIODevice::Append);
+                        file.open(QIODevice::ReadWrite);
 
                         // Write initial zeros
-                        if (exists) {
+                        if (!exists) {
                             QByteArray zero((maxSteps + 2) * sizeof(qint64), 0);
                             file.write(zero);
                             file.seek(0);
@@ -913,6 +915,8 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                         op->write(out);
                     }
 
+                    file.flush();
+
                     // Update count and pos
                     qint64 pos = file.pos();
                     file.seek(0);
@@ -932,7 +936,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                 {
                     auto &file = *stepFile;
                     if (!file.isOpen()) {
-                        file.open(QIODevice::ReadWrite | QIODevice::Append);
+                        file.open(QIODevice::ReadWrite);
                     }
 
                     QByteArray data;
@@ -976,7 +980,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                 {
                     auto &file = *stepFile;
                     if (!file.isOpen())
-                        file.open(QIODevice::ReadWrite | QIODevice::Append);
+                        file.open(QIODevice::ReadWrite);
 
                     file.seek(16);
 
@@ -1090,7 +1094,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                     auto &file = *stepFile;
                     bool exists = file.exists();
                     if (!file.isOpen()) {
-                        file.open(QIODevice::ReadWrite | QIODevice::Append);
+                        file.open(QIODevice::ReadWrite);
                     }
                     QDataStream out(&file);
                     if (!exists) {

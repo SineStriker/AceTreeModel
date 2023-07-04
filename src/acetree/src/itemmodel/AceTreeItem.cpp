@@ -4,6 +4,8 @@
 #include "AceTreeEntity.h"
 #include "AceTreeModel_p.h"
 
+#include "serialization/serialize_size_t.h"
+
 #include <QDataStream>
 #include <QDebug>
 #include <QtEndian>
