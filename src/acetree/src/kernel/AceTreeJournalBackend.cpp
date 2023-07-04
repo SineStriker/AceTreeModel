@@ -931,25 +931,20 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                 // Write steps (Must do it after writing transaction)
                 {
                     auto &file = *stepFile;
-                    bool exists = file.exists();
                     if (!file.isOpen()) {
                         file.open(QIODevice::ReadWrite | QIODevice::Append);
                     }
-                    QDataStream out(&file);
-                    if (!exists) {
-                        // Write initial values
-                        out << maxSteps << maxCheckPoints;
-                    } else {
-                        file.seek(8);
-                    }
-                    out << fsMin2 << fsMax2 << fsStep2;
 
+                    QByteArray data;
+                    QDataStream out(&data, QIODevice::WriteOnly);
+                    out << fsMin2 << fsMax2 << fsStep2;
                     if (task->maxId > 0) {
                         out << task->maxId;
-                    } else if (!exists) {
-                        out << size_t(0);
                     }
 
+                    // Call write once to ensure atomicity
+                    file.seek(8);
+                    file.write(data);
                     file.flush();
                 }
 
@@ -983,9 +978,12 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                     if (!file.isOpen())
                         file.open(QIODevice::ReadWrite | QIODevice::Append);
 
-                    QDataStream out(&file);
                     file.seek(16);
+
+                    // Call write once
+                    QDataStream out(&file);
                     out << fsStep2;
+
                     file.flush();
                 }
 
