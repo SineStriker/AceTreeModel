@@ -490,7 +490,7 @@ public:
     template <class T>
     void addChildPointer(const QString &key, T *&ptr) {
         static_assert(std::is_base_of<AceTreeEntity, T>::value, "T should inherit from AceTreeEntity");
-        addChildPointer(key, [ptr](AceTreeEntity *item) mutable { ptr = static_cast<T *>(item); });
+        addChildPointer(key, [&ptr](AceTreeEntity *item) { ptr = static_cast<T *>(item); });
     }
 
     void addChildPointer(const QString &key, const std::function<void(AceTreeEntity *)> &callback);
