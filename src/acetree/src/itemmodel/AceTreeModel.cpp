@@ -143,6 +143,11 @@ void AceTreeModel::setModelInfo(const QVariantHash &info) {
     d->backend->setModelInfo(info);
 }
 
+AceTreeBackend *AceTreeModel::backend() const {
+    Q_D(const AceTreeModel);
+    return d->backend;
+}
+
 bool AceTreeModel::isWritable() const {
     Q_D(const AceTreeModel);
     return d->m_state == Transaction && !d->m_metaOperation;

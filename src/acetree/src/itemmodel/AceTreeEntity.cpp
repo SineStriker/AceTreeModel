@@ -203,7 +203,9 @@ void AceTreeEntityExtra::setup(AceTreeEntity *entity) {
     Q_UNUSED(entity)
 }
 
-void AceTreeEntityExtra::event(AceTreeEvent *event){Q_UNUSED(event)}
+void AceTreeEntityExtra::event(AceTreeEvent *event){
+    Q_UNUSED(event) //
+}
 
 AceTreeEntityExtra::AceTreeEntityExtra(AceTreeEntityExtraPrivate &d)
     : d_ptr(&d) {

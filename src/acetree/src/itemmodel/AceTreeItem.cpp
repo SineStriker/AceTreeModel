@@ -1114,38 +1114,6 @@ AceTreeItem::AceTreeItem(AceTreeItemPrivate &d) : d_ptr(&d) {
 
 namespace AceTreePrivate {
 
-    //    static int readBlock(QDataStream &stream, char *data, int len) {
-    //        // Disable reads on failure in transacted stream
-    //        if (stream.status() != QDataStream::Ok && stream.device()->isTransactionStarted())
-    //            return -1;
-
-    //        const int readResult = stream.device()->read(data, len);
-    //        if (readResult != len)
-    //            stream.setStatus(QDataStream::ReadPastEnd);
-    //        return readResult;
-    //    }
-
-    //    QDataStream &operator>>(QDataStream &in, size_t &i) {
-    //        i = 0;
-    //        if (readBlock(in, reinterpret_cast<char *>(&i), sizeof(i)) != sizeof(i)) {
-    //            i = 0;
-    //        } else {
-    //            if (in.byteOrder() != static_cast<QDataStream::ByteOrder>(QSysInfo::ByteOrder)) {
-    //                i = qbswap(i);
-    //            }
-    //        }
-    //        return in;
-    //    }
-
-    //    QDataStream &operator<<(QDataStream &out, size_t i) {
-    //        if (out.byteOrder() != static_cast<QDataStream::ByteOrder>(QSysInfo::ByteOrder)) {
-    //            i = qbswap(i);
-    //        }
-    //        if (out.device()->write((char *) &i, sizeof(i)) != sizeof(i))
-    //            out.setStatus(QDataStream::WriteFailed);
-    //        return out;
-    //    }
-
     QDataStream &operator>>(QDataStream &in, QString &s) {
         QByteArray arr;
         in >> arr;

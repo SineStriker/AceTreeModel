@@ -39,8 +39,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     src/entity
     src/itemmodel
     src/serialization
-    src/widgets
-    include/io
+    include/private
 )
 
 # Set extra

@@ -21,6 +21,8 @@ public:
     QVariantHash modelInfo() const;
     void setModelInfo(const QVariantHash &info);
 
+    AceTreeBackend *backend() const; // Do not call non-const API during model's internal state
+
 public:
     bool isWritable() const;
     AceTreeItem *itemFromIndex(size_t index) const;
