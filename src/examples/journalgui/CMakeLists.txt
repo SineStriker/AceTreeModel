@@ -11,4 +11,6 @@ file(GLOB _src *.h *.cpp)
 
 add_executable(${PROJECT_NAME} ${_src})
 
-target_link_libraries(${PROJECT_NAME} PRIVATE acetree Qt${QT_VERSION_MAJOR}::Widgets)
+target_link_libraries(${PROJECT_NAME} PRIVATE acetree)
+
+qtmediate_link_qt_libraries(${PROJECT_NAME} PUBLIC Widgets)

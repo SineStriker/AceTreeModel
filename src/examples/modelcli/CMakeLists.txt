@@ -10,6 +10,8 @@ add_executable(${PROJECT_NAME} ${_src})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE acetree)
 
+qtmediate_link_qt_libraries(${PROJECT_NAME} PUBLIC Core)
+
 if(NOT WIN32)
     target_link_libraries(${PROJECT_NAME} PRIVATE pthread)
 endif()

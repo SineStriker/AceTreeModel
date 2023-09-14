@@ -1,11 +1,9 @@
-if(ACETREE_INSTALL)
-    include(GNUInstallDirs)
-    include(CMakePackageConfigHelpers)
+
+if(NOT DEFINED QTMEDIATE_CMAKE_MODULES_DIR)
+    message(FATAL_ERROR "QTMEDIATE_CMAKE_MODULES_DIR not defined!")
 endif()
 
-# Add library
-find_package(QT NAMES Qt6 Qt5 COMPONENTS Core REQUIRED)
-find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Core REQUIRED)
+include("${QTMEDIATE_CMAKE_MODULES_DIR}/QtMediateAPI.cmake")
 
 add_subdirectory(acetree)
 
@@ -17,11 +15,6 @@ endif()
 # Add examples
 if(ACETREE_BUILD_EXAMPLES)
     add_subdirectory(examples)
-endif()
-
-# Add tools
-if(ACETREE_BUILD_TOOLS)
-    add_subdirectory(tools)
 endif()
 
 # Install

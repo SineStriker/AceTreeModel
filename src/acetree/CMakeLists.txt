@@ -22,13 +22,12 @@ if(NOT WIN32)
 endif()
 
 # Add source files
-file(GLOB_RECURSE _headers include/*.h)
-file(GLOB_RECURSE _sources src/*.h src/*.cpp)
+file(GLOB_RECURSE _src include/*.h src/*.h src/*.cpp)
 
-target_sources(${PROJECT_NAME} PRIVATE ${_headers} ${_sources})
+target_sources(${PROJECT_NAME} PRIVATE ${_headers} ${_src})
 
 # Handle libraries and include directories
-target_link_libraries(${PROJECT_NAME} PUBLIC Qt${QT_VERSION_MAJOR}::Core)
+qtmediate_link_qt_libraries(${PROJECT_NAME} PUBLIC Core)
 
 target_include_directories(${PROJECT_NAME} PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
@@ -44,8 +43,10 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 
 # Set extra
 if(WIN32 AND NOT ACETREE_BUILD_STATIC)
-    set(RC_DESCRIPTION "Qt Journaling Tree Model")
-    include(${ACETREE_MODULES_DIR}/winrc.cmake)
+    qtmediate_add_win_rc(${PROJECT_NAME}
+        DESCRIPTION "Qt Journaling Tree Model"
+        COPYRIGHT "Copyright 2022-2023 SineStriker"
+    )
 endif()
 
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ${PROJECT_NAME}-qt${QT_VERSION_MAJOR})
