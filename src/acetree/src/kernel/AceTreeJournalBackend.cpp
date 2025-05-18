@@ -13,19 +13,19 @@
 #include <QTimer>
 
 #ifndef ACETREE_ENABLE_DEBUG
-#define myDebug                                                                                    \
-    while (false)                                                                                  \
-    qDebug
+#  define myDebug                                                                                  \
+      while (false)                                                                                \
+      qDebug
 #else
-#define myDebug qDebug
+#  define myDebug qDebug
 #endif
 
 #define myWarning(func)                                                                            \
     (qWarning().nospace() << "AceTreeJournalBackend::" << (func) << "():").space()
 
 static bool truncateJournals(const QString &dir, int i, bool dryRun = false) {
-    auto func = dryRun ? QOverload<const QString &>::of(QFile::exists)
-                       : QOverload<const QString &>::of(QFile::remove);
+    auto func = dryRun ? QOverload<const QString &>::of<bool>(QFile::exists)
+                       : QOverload<const QString &>::of<bool>(QFile::remove);
 
     bool b1 = func(QString("%1/journal_%2.dat").arg(dir, QString::number(i))) || (i == 0);
     bool b2 = func(QString("%1/ckpt_%2.dat").arg(dir, QString::number(i)));
@@ -175,7 +175,7 @@ QHash<QString, QString> AceTreeJournalBackendPrivate::fs_getAttributes_do(int st
     if (cur == 1) {
         dev.seek((maxSteps + 2) * sizeof(qint64)); // Data section start
     } else {
-        dev.seek((cur - 1) * sizeof(qint64));      // Previous transaction end
+        dev.seek((cur - 1) * sizeof(qint64)); // Previous transaction end
         qint64 pos;
         in >> pos;
         dev.seek(pos);
@@ -895,7 +895,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                     if (cur == 1) {
                         file.seek((maxSteps + 2) * sizeof(qint64)); // Data section start
                     } else {
-                        file.seek((cur - 1) * sizeof(qint64));      // Previous transaction end
+                        file.seek((cur - 1) * sizeof(qint64)); // Previous transaction end
                         qint64 pos;
                         out >> pos;
                         file.seek(pos);
@@ -1147,9 +1147,9 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                 int minNum = fsMin2 / maxSteps;
                 int maxNum = (fsMax2 - 1) / maxSteps;
 
-                QFileInfoList filesToCopy{
-                    QString("%1/model_steps.dat").arg(dir),
-                };
+                QFileInfoList filesToCopy({
+                    QFileInfo(QString("%1/model_steps.dat").arg(dir)),
+                });
 
                 QFileInfo infoFile1(QString("%1/model_info.dat").arg(dir));
                 if (infoFile1.isFile()) {

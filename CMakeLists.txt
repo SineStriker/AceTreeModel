@@ -46,7 +46,6 @@ endif()
 # Project Variables
 # ----------------------------------
 set(ACETREE_INSTALL_NAME acetree)
-set(QTMEDIATE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # ----------------------------------
 # Main Project

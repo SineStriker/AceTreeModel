@@ -27,7 +27,7 @@ file(GLOB_RECURSE _src include/*.h src/*.h src/*.cpp)
 target_sources(${PROJECT_NAME} PRIVATE ${_headers} ${_src})
 
 # Handle libraries and include directories
-qtmediate_link_qt_libraries(${PROJECT_NAME} PUBLIC Core)
+qm_link_qt(${PROJECT_NAME} PUBLIC Core)
 
 target_include_directories(${PROJECT_NAME} PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
@@ -43,7 +43,7 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 
 # Set extra
 if(WIN32 AND NOT ACETREE_BUILD_STATIC)
-    qtmediate_add_win_rc(${PROJECT_NAME}
+    qm_add_win_rc(${PROJECT_NAME}
         DESCRIPTION "Qt Journaling Tree Model"
         COPYRIGHT "Copyright 2022-2023 SineStriker"
     )

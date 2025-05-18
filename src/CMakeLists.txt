@@ -1,9 +1,4 @@
-
-if(NOT DEFINED QTMEDIATE_CMAKE_MODULES_DIR)
-    message(FATAL_ERROR "QTMEDIATE_CMAKE_MODULES_DIR not defined!")
-endif()
-
-include("${QTMEDIATE_CMAKE_MODULES_DIR}/QtMediateAPI.cmake")
+find_package(qmsetup REQUIRED)
 
 add_subdirectory(acetree)
 
