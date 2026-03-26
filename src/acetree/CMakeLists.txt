@@ -27,7 +27,9 @@ file(GLOB_RECURSE _src include/*.h src/*.h src/*.cpp)
 target_sources(${PROJECT_NAME} PRIVATE ${_headers} ${_src})
 
 # Handle libraries and include directories
-qtmediate_link_qt_libraries(${PROJECT_NAME} PUBLIC Core)
+find_package(QT NAMES Qt6 Qt5 COMPONENTS Core REQUIRED)
+find_package(Qt${QT_VERSION_MAJOR} COMPONENTS Core REQUIRED)
+target_link_libraries(${PROJECT_NAME} PUBLIC Qt${QT_VERSION_MAJOR}::Core)
 
 target_include_directories(${PROJECT_NAME} PUBLIC
     "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
@@ -42,12 +44,12 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 )
 
 # Set extra
-if(WIN32 AND NOT ACETREE_BUILD_STATIC)
-    qtmediate_add_win_rc(${PROJECT_NAME}
-        DESCRIPTION "Qt Journaling Tree Model"
-        COPYRIGHT "Copyright 2022-2023 SineStriker"
-    )
-endif()
+# if(WIN32 AND NOT ACETREE_BUILD_STATIC)
+#     qtmediate_add_win_rc(${PROJECT_NAME}
+#         DESCRIPTION "Qt Journaling Tree Model"
+#         COPYRIGHT "Copyright 2022-2023 SineStriker"
+#     )
+# endif()
 
 set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ${PROJECT_NAME}-qt${QT_VERSION_MAJOR})
 

@@ -24,8 +24,9 @@
     (qWarning().nospace() << "AceTreeJournalBackend::" << (func) << "():").space()
 
 static bool truncateJournals(const QString &dir, int i, bool dryRun = false) {
-    auto func = dryRun ? QOverload<const QString &>::of(QFile::exists)
-                       : QOverload<const QString &>::of(QFile::remove);
+    auto func = [dryRun](const QString &path) {
+        return dryRun ? QFile::exists(path) : QFile::remove(path);
+    };
 
     bool b1 = func(QString("%1/journal_%2.dat").arg(dir, QString::number(i))) || (i == 0);
     bool b2 = func(QString("%1/ckpt_%2.dat").arg(dir, QString::number(i)));
@@ -218,9 +219,13 @@ bool AceTreeJournalBackendPrivate::readJournal(QFile &file, int maxSteps,
     for (const auto &pos : qAsConst(positions)) {
         file.seek(pos);
 
+        qDebug() << "Read transaction at position" << pos;
+
         // Read attributes
         QHash<QString, QString> attrs;
         in >> attrs;
+
+        qDebug() << "Read transaction at position" << in.device()->pos();
 
         // Read operations
         int op_cnt;
@@ -1148,7 +1153,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                 int maxNum = (fsMax2 - 1) / maxSteps;
 
                 QFileInfoList filesToCopy{
-                    QString("%1/model_steps.dat").arg(dir),
+                    QFileInfo(QString("%1/model_steps.dat").arg(dir)),
                 };
 
                 QFileInfo infoFile1(QString("%1/model_info.dat").arg(dir));

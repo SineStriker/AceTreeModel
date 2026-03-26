@@ -13,4 +13,4 @@ add_executable(${PROJECT_NAME} ${_src})
 
 target_link_libraries(${PROJECT_NAME} PRIVATE acetree)
 
-qtmediate_link_qt_libraries(${PROJECT_NAME} PUBLIC Widgets)
+target_link_libraries(${PROJECT_NAME} PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
