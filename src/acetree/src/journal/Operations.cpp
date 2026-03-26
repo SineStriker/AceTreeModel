@@ -81,8 +81,12 @@ namespace Operations {
         if (!readHead(in)) {
             return false;
         }
-        int size;
+        qint32 size;
         in >> parent >> index >> size;
+        if (size < 0) {
+            in.setStatus(QDataStream::ReadCorruptData);
+            return false;
+        }
         children.reserve(size);
         in.skipRawData(sizeof(size_t) * size + sizeof(qint64));
         for (int i = 0; i < size; ++i) {
@@ -100,7 +104,7 @@ namespace Operations {
 
     bool RowsInsertOp::write(QDataStream &out) const {
         writeHead(out);
-        out << parent << index << children.size();
+        out << parent << index << qint32(children.size());
         for (const auto &child : qAsConst(children)) {
             out << child->index();
         }
@@ -128,8 +132,12 @@ namespace Operations {
         if (!readHead(in)) {
             return false;
         }
-        int size;
+        qint32 size;
         in >> parent >> index >> size;
+        if (size < 0) {
+            in.setStatus(QDataStream::ReadCorruptData);
+            return false;
+        }
         childrenIds.reserve(size);
         for (int i = 0; i < size; ++i) {
             size_t id;
@@ -148,8 +156,12 @@ namespace Operations {
         if (!readHead(in)) {
             return false;
         }
-        int size;
+        qint32 size;
         in >> parent >> index >> size;
+        if (size < 0) {
+            in.setStatus(QDataStream::ReadCorruptData);
+            return false;
+        }
         children.reserve(size);
         for (int i = 0; i < size; ++i) {
             size_t id;
@@ -165,7 +177,7 @@ namespace Operations {
 
     bool RowsRemoveOp::write(QDataStream &out) const {
         writeHead(out);
-        out << parent << index << children.size();
+        out << parent << index << qint32(children.size());
         for (const auto &id : qAsConst(children)) {
             out << id;
         }
@@ -651,7 +663,7 @@ namespace Operations {
                     return nullptr;
                 }
 
-                auto e = new AceTreeRecordEvent(AceTreeEvent::RowsRemove, item, op->seq, child);
+                auto e = new AceTreeRecordEvent(AceTreeEvent::RecordRemove, item, op->seq, child);
                 res = e;
                 break;
             }

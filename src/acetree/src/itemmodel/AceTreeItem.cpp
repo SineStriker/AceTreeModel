@@ -433,10 +433,14 @@ AceTreeItem *AceTreeItemPrivate::read_helper(QDataStream &in, bool user) {
         goto abort;
     }
 
-    int size;
+    qint32 size;
 
     // Read vector
     in >> size;
+    if (size < 0) {
+        myWarning(__func__) << "invalid vector size";
+        goto abort;
+    }
     d->vector.reserve(size);
     for (int i = 0; i < size; ++i) {
         auto child = read_helper(in, user);
@@ -453,6 +457,10 @@ AceTreeItem *AceTreeItemPrivate::read_helper(QDataStream &in, bool user) {
 
     // Read record table
     in >> size;
+    if (size < 0) {
+        myWarning(__func__) << "invalid record size";
+        goto abort;
+    }
     d->records.reserve(size);
     d->recordIndexes.reserve(size);
 
@@ -476,6 +484,10 @@ AceTreeItem *AceTreeItemPrivate::read_helper(QDataStream &in, bool user) {
 
     // Read set
     in >> size;
+    if (size < 0) {
+        myWarning(__func__) << "invalid element size";
+        goto abort;
+    }
     d->set.reserve(size);
     d->setIndexes.reserve(size);
     for (int i = 0; i < size; ++i) {
@@ -522,20 +534,20 @@ void AceTreeItemPrivate::write_helper(QDataStream &out, bool user) const {
     out << d->byteArray;
 
     // Write vector
-    out << d->vector.size();
+    out << qint32(d->vector.size());
     for (const auto &item : d->vector) {
         item->d_func()->write_helper(out, user);
     }
 
     // Write record table
-    out << d->records.size();
+    out << qint32(d->records.size());
     for (auto it = d->records.begin(); it != d->records.end(); ++it) {
         out << it.key();
         it.value()->d_func()->write_helper(out, user);
     }
 
     // Write set
-    out << d->set.size();
+    out << qint32(d->set.size());
     for (auto it = d->set.begin(); it != d->set.end(); ++it) {
         AceTreePrivate::operator<<(out, it.key());
         it.value()->d_func()->write_helper(out, user);
@@ -1128,8 +1140,12 @@ namespace AceTreePrivate {
     }
 
     QDataStream &operator>>(QDataStream &in, QVariantHash &s) {
-        int size;
+        qint32 size;
         in >> size;
+        if (size < 0) {
+            in.setStatus(QDataStream::ReadCorruptData);
+            return in;
+        }
         s.reserve(size);
         for (int i = 0; i < size; ++i) {
             QString key;
@@ -1148,7 +1164,7 @@ namespace AceTreePrivate {
     }
 
     QDataStream &operator<<(QDataStream &out, const QVariantHash &s) {
-        out << s.size();
+        out << qint32(s.size());
         for (auto it = s.begin(); it != s.end(); ++it) {
             AceTreePrivate::operator<<(out, it.key());
             if (it->type() == QVariant::String) {

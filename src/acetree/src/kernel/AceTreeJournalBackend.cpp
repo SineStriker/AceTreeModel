@@ -11,6 +11,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QTimer>
+#include <limits>
 
 #ifndef ACETREE_ENABLE_DEBUG
 #define myDebug                                                                                    \
@@ -22,6 +23,14 @@
 
 #define myWarning(func)                                                                            \
     (qWarning().nospace() << "AceTreeJournalBackend::" << (func) << "():").space()
+
+namespace {
+constexpr int kAceTreeStreamVersion = QDataStream::Qt_5_0;
+
+inline void setAceTreeStreamVersion(QDataStream &stream) {
+    stream.setVersion(kAceTreeStreamVersion);
+}
+} // namespace
 
 static bool truncateJournals(const QString &dir, int i, bool dryRun = false) {
     auto func = [dryRun](const QString &path) {
@@ -72,6 +81,7 @@ void AceTreeJournalBackendPrivate::setup_helper() {
             QFile file(QString("%1/model_steps.dat").arg(dir));
             file.open(QIODevice::WriteOnly);
             QDataStream out(&file);
+            setAceTreeStreamVersion(out);
             out << maxSteps << maxCheckPoints << fsMin2 << fsMax2 << fsStep2 << model_p->maxIndex;
         }
 
@@ -156,6 +166,7 @@ QHash<QString, QString> AceTreeJournalBackendPrivate::fs_getAttributes_do(int st
 
     QScopedPointer<QFile> file;
     QDataStream in;
+    setAceTreeStreamVersion(in);
     if (num == txNum && txFile && txFile->isOpen()) {
         in.setDevice(txFile);
     } else {
@@ -196,6 +207,7 @@ QHash<QString, QString> AceTreeJournalBackendPrivate::fs_getAttributes_do(int st
 bool AceTreeJournalBackendPrivate::readJournal(QFile &file, int maxSteps,
                                                QVector<Tasks::OpsAndAttrs> &res, bool brief) {
     QDataStream in(&file);
+    setAceTreeStreamVersion(in);
     QList<qint64> positions{
         static_cast<qint64>((maxSteps + 2) * sizeof(qint64)),
     };
@@ -203,8 +215,13 @@ bool AceTreeJournalBackendPrivate::readJournal(QFile &file, int maxSteps,
     qint64 cnt;
     in >> cnt;
 
-    positions.reserve(cnt);
-    for (int i = 0; i < cnt - 1; ++i) {
+    if (cnt < 0 || cnt > std::numeric_limits<int>::max()) {
+        in.setStatus(QDataStream::ReadCorruptData);
+        return false;
+    }
+
+    positions.reserve(static_cast<qsizetype>(cnt));
+    for (qint64 i = 0; i < cnt - 1; ++i) {
         qint64 pos;
         in >> pos;
         positions.append(pos);
@@ -215,7 +232,7 @@ bool AceTreeJournalBackendPrivate::readJournal(QFile &file, int maxSteps,
     }
 
     QVector<Tasks::OpsAndAttrs> data;
-    data.reserve(cnt);
+    data.reserve(static_cast<qsizetype>(cnt));
     for (const auto &pos : qAsConst(positions)) {
         file.seek(pos);
 
@@ -228,10 +245,14 @@ bool AceTreeJournalBackendPrivate::readJournal(QFile &file, int maxSteps,
         qDebug() << "Read transaction at position" << in.device()->pos();
 
         // Read operations
-        int op_cnt;
+        qint32 op_cnt;
         in >> op_cnt;
+        if (op_cnt < 0) {
+            in.setStatus(QDataStream::ReadCorruptData);
+            goto failed;
+        }
         QVector<Operations::BaseOp *> ops;
-        ops.reserve(op_cnt);
+        ops.reserve(static_cast<qsizetype>(op_cnt));
         for (int i = 0; i < op_cnt; ++i) {
             bool success = false;
             Operations::Change c;
@@ -338,6 +359,7 @@ failed:
 bool AceTreeJournalBackendPrivate::readCheckPoint(QFile &file, AceTreeItem **rootRef,
                                                   QVector<AceTreeItem *> *removedItemsRef) {
     QDataStream in(&file);
+    setAceTreeStreamVersion(in);
     in.skipRawData(4);
 
     AceTreeItem *root = nullptr;
@@ -367,8 +389,12 @@ bool AceTreeJournalBackendPrivate::readCheckPoint(QFile &file, AceTreeItem **roo
 
     if (removedItemsRef) {
         // Read removed items size
-        int sz;
+        qint32 sz;
         in >> sz;
+        if (sz < 0) {
+            delete root;
+            return false;
+        }
 
         // Read removed items data
         removedItems.reserve(sz);
@@ -396,6 +422,7 @@ bool AceTreeJournalBackendPrivate::writeCheckPoint(QFile &file, AceTreeItem *roo
                                                    const QVector<AceTreeItem *> &removedItems) {
     file.write("CKPT", 4);
     QDataStream out(&file);
+    setAceTreeStreamVersion(out);
     out << qint64(0);
     if (root) {
         // Write index
@@ -415,7 +442,7 @@ bool AceTreeJournalBackendPrivate::writeCheckPoint(QFile &file, AceTreeItem *roo
     file.seek(pos);
 
     // Write removed items size
-    out << (removedItems.size());
+    out << qint32(removedItems.size());
 
     // Write removed items data
     for (const auto &item : qAsConst(removedItems)) {
@@ -894,6 +921,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                     }
 
                     QDataStream out(&file);
+                    setAceTreeStreamVersion(out);
 
                     // Get current transaction start pos
                     int cur = (fsStep2 - 1) % maxSteps + 1;
@@ -912,7 +940,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                     out << data.attributes;
 
                     // Write operation count
-                    out << data.operations.size();
+                    out << qint32(data.operations.size());
 
                     // Write operations
                     for (const auto &op : qAsConst(data.operations)) {
@@ -946,6 +974,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
 
                     QByteArray data;
                     QDataStream out(&data, QIODevice::WriteOnly);
+                    setAceTreeStreamVersion(out);
                     out << fsMin2 << fsMax2 << fsStep2;
                     if (task->maxId > 0) {
                         out << task->maxId;
@@ -991,6 +1020,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
 
                     // Call write once
                     QDataStream out(&file);
+                    setAceTreeStreamVersion(out);
                     out << fsStep2;
 
                     file.flush();
@@ -1060,6 +1090,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                         file.open(QIODevice::ReadWrite);
                     file.seek(0);
                     QDataStream out(&file);
+                    setAceTreeStreamVersion(out);
                     out << task->info;
 
                     auto pos = file.pos();
@@ -1102,6 +1133,7 @@ void AceTreeJournalBackendPrivate::workerRoutine() {
                         file.open(QIODevice::ReadWrite);
                     }
                     QDataStream out(&file);
+                    setAceTreeStreamVersion(out);
                     if (!exists) {
                         // Write initial values
                         out << maxSteps << maxCheckPoints;
@@ -1340,6 +1372,7 @@ out_fix:
     size_t maxId;
     auto readSteps = [&](QFile &file) {
         QDataStream in(&file);
+        setAceTreeStreamVersion(in);
         in >> maxSteps >> maxCheckPoints >> fsMin >> fsMax >> fsStep >> maxId;
         if (in.status() != QDataStream::Ok) {
             return false;
@@ -1372,6 +1405,7 @@ out_fix:
             }
 
             QDataStream in(&file);
+            setAceTreeStreamVersion(in);
             qint64 cur;
             in >> cur;
 
@@ -1427,7 +1461,7 @@ out_fix:
         QFile file(QString("%1/model_info.dat").arg(dir));
         if (file.open(QIODevice::ReadOnly)) {
             QDataStream in(&file);
-            QVariantHash modelInfo;
+            setAceTreeStreamVersion(in);
             in >> modelInfo;
             if (in.status() != QDataStream::Ok) {
                 modelInfo.clear();
